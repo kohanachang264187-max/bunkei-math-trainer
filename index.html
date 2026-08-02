@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#132238" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="manifest" href="./manifest.json" />
+  <title>文系数学トレーナー</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #64748b;
+      --line: #dbe3ef;
+      --primary: #1769aa;
+      --primary-2: #eaf4ff;
+      --success: #16794f;
+      --success-bg: #eaf8f1;
+      --warn: #a15c00;
+      --warn-bg: #fff5df;
+      --danger: #aa2f2f;
+      --danger-bg: #fff0f0;
+      --shadow: 0 14px 34px rgba(28, 48, 76, .10);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif; }
+    button, input, select, textarea { font: inherit; }
+    button { -webkit-tap-highlight-color: transparent; }
+    .hidden { display: none !important; }
+
+    header {
+      position: sticky; top: 0; z-index: 20;
+      height: 64px; padding: 0 20px;
+      background: rgba(255,255,255,.95); backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; }
+    .brand-mark {
+      width: 38px; height: 38px; border-radius: 12px; background: var(--primary);
+      display: grid; place-items: center; color: white; font-size: 20px;
+    }
+    .header-right { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; }
+    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; background: white; }
+
+    main { max-width: 1280px; margin: 0 auto; padding: 22px; }
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    .dashboard-grid {
+      display: grid; grid-template-columns: 1.35fr .85fr; gap: 18px;
+    }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 20px;
+    }
+    .hero {
+      min-height: 250px; display: flex; flex-direction: column; justify-content: space-between;
+      background: linear-gradient(135deg, #ffffff 0%, #eff7ff 100%);
+    }
+    .eyebrow { color: var(--primary); font-size: 13px; font-weight: 800; letter-spacing: .06em; }
+    h1 { margin: 8px 0 10px; font-size: clamp(28px, 4vw, 46px); line-height: 1.16; }
+    h2 { margin: 0 0 14px; font-size: 20px; }
+    h3 { margin: 0 0 10px; font-size: 16px; }
+    p { line-height: 1.75; }
+    .sub { color: var(--muted); margin: 0; }
+    .hero-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+
+    .btn {
+      border: 0; border-radius: 13px; padding: 12px 18px; cursor: pointer;
+      font-weight: 750; transition: transform .08s ease, opacity .2s;
+    }
+    .btn:active { transform: scale(.98); }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-secondary { background: var(--primary-2); color: var(--primary); }
+    .btn-ghost { background: white; color: var(--ink); border: 1px solid var(--line); }
+    .btn-danger { background: var(--danger-bg); color: var(--danger); }
+    .btn-small { padding: 8px 11px; border-radius: 10px; font-size: 13px; }
+    .btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+    .stat { background: #f8fafc; border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+    .stat-value { font-size: 24px; font-weight: 850; }
+    .stat-label { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .progress { height: 10px; border-radius: 999px; background: #e6edf5; overflow: hidden; margin-top: 10px; }
+    .progress > div { height: 100%; background: var(--primary); width: 0%; transition: width .4s ease; }
+
+    .section-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 18px; }
+    .list { display: grid; gap: 10px; }
+    .list-row {
+      display: flex; justify-content: space-between; gap: 12px; align-items: center;
+      padding: 12px 0; border-bottom: 1px solid #edf1f6;
+    }
+    .list-row:last-child { border-bottom: 0; }
+    .tag { padding: 5px 9px; border-radius: 999px; font-size: 12px; font-weight: 750; }
+    .tag-blue { background: var(--primary-2); color: var(--primary); }
+    .tag-amber { background: var(--warn-bg); color: var(--warn); }
+    .tag-green { background: var(--success-bg); color: var(--success); }
+
+    .study-layout {
+      display: grid; grid-template-columns: minmax(320px, .72fr) minmax(520px, 1.28fr); gap: 16px;
+      min-height: calc(100vh - 108px);
+    }
+    .problem-panel, .work-panel {
+      background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+      box-shadow: var(--shadow); overflow: hidden;
+    }
+    .problem-panel { padding: 20px; display: flex; flex-direction: column; }
+    .study-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .question-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+    .question {
+      background: #f8fafc; border: 1px solid var(--line); border-radius: 15px;
+      padding: 18px; margin: 15px 0; font-size: 20px; line-height: 1.7; min-height: 128px;
+    }
+    .phase-box { border-top: 1px solid var(--line); padding-top: 16px; margin-top: auto; }
+    .choice-grid { display: grid; gap: 10px; }
+    .choice {
+      width: 100%; text-align: left; padding: 13px 14px; border: 1px solid var(--line);
+      background: white; border-radius: 12px; cursor: pointer;
+    }
+    .choice.selected { border-color: var(--primary); background: var(--primary-2); color: var(--primary); font-weight: 800; }
+    .choice.correct { border-color: var(--success); background: var(--success-bg); color: var(--success); }
+    .choice.wrong { border-color: var(--danger); background: var(--danger-bg); color: var(--danger); }
+
+    .work-panel { display: grid; grid-template-rows: auto 1fr auto; min-height: 700px; }
+    .toolbar {
+      padding: 10px 12px; border-bottom: 1px solid var(--line); background: #fbfdff;
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    }
+    .tool {
+      border: 1px solid var(--line); background: white; color: var(--ink);
+      border-radius: 10px; padding: 8px 10px; cursor: pointer; font-size: 13px;
+    }
+    .tool.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .toolbar-spacer { flex: 1; }
+    .canvas-wrap { position: relative; min-height: 520px; overflow: hidden; background: white; touch-action: none; }
+    .canvas-wrap.grid {
+      background-image:
+        linear-gradient(#e8eef6 1px, transparent 1px),
+        linear-gradient(90deg, #e8eef6 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+    .canvas-empty {
+      position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+      color: #a2afc0; font-size: 15px;
+    }
+
+    .answer-bar {
+      padding: 12px; border-top: 1px solid var(--line); display: grid;
+      grid-template-columns: 1fr auto auto; gap: 10px; background: #fff;
+    }
+    .answer-input {
+      border: 1px solid var(--line); border-radius: 11px; padding: 11px 13px; outline: none;
+    }
+    .answer-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(23,105,170,.12); }
+
+    .drawer {
+      position: fixed; z-index: 50; inset: 0; background: rgba(15,23,42,.45);
+      display: grid; place-items: end center; padding: 18px;
+    }
+    .drawer-card {
+      width: min(760px, 100%); max-height: 86vh; overflow: auto;
+      background: white; border-radius: 22px 22px 16px 16px; padding: 22px; box-shadow: var(--shadow);
+    }
+    .drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .notice { border-radius: 13px; padding: 13px 14px; margin: 12px 0; line-height: 1.6; }
+    .notice-success { background: var(--success-bg); color: var(--success); }
+    .notice-warn { background: var(--warn-bg); color: var(--warn); }
+    .notice-danger { background: var(--danger-bg); color: var(--danger); }
+    .solution {
+      background: #f8fafc; border: 1px solid var(--line); border-radius: 14px; padding: 15px;
+      white-space: pre-wrap; line-height: 1.8;
+    }
+    .self-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .cause-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .footer-note { color: var(--muted); font-size: 12px; margin-top: 12px; }
+
+    @media (max-width: 900px) {
+      main { padding: 12px; }
+      .dashboard-grid, .section-grid, .study-layout { grid-template-columns: 1fr; }
+      .study-layout { min-height: auto; }
+      .work-panel { min-height: 660px; }
+      .problem-panel { min-height: auto; }
+      .stats { grid-template-columns: 1fr 1fr 1fr; }
+      .question { font-size: 18px; }
+    }
+    @media (max-width: 560px) {
+      header { padding: 0 12px; }
+      .brand span:last-child { display: none; }
+      .stats { grid-template-columns: 1fr; }
+      .answer-bar { grid-template-columns: 1fr 1fr; }
+      .answer-input { grid-column: 1 / -1; }
+      .cause-grid, .self-grid { grid-template-columns: 1fr; }
+      .work-panel { min-height: 620px; }
+      .canvas-wrap { min-height: 430px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-mark">∑</div>
+      <span>文系数学トレーナー</span>
+    </div>
+    <div class="header-right">
+      <span id="saveState" class="pill">端末内に自動保存</span>
+      <button class="btn btn-ghost btn-small" id="homeButton">ホーム</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="homeScreen" class="screen active">
+      <div class="dashboard-grid">
+        <div class="card hero">
+          <div>
+            <div class="eyebrow">TODAY'S STUDY</div>
+            <h1>考え方を書いて、<br>解ける数学へ。</h1>
+            <p class="sub">解法を選び、タッチペンで途中式を書き、間違い方まで振り返ります。</p>
+          </div>
+          <div>
+            <div class="hero-actions">
+              <button id="startStudy" class="btn btn-primary">今日の学習を始める</button>
+              <button id="resetProgress" class="btn btn-ghost">進捗を初期化</button>
+            </div>
+            <div class="stats">
+              <div class="stat"><div id="todayCount" class="stat-value">0</div><div class="stat-label">今日の完了問題</div></div>
+              <div class="stat"><div id="streakCount" class="stat-value">0</div><div class="stat-label">連続学習日</div></div>
+              <div class="stat"><div id="masteryRate" class="stat-value">0%</div><div class="stat-label">基礎習得度</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>本日の構成</h2>
+          <div class="list">
+            <div class="list-row"><span>復習</span><span class="tag tag-blue">3問</span></div>
+            <div class="list-row"><span>新規</span><span class="tag tag-green">3問</span></div>
+            <div class="list-row"><span>弱点補強</span><span class="tag tag-amber">2問</span></div>
+          </div>
+          <div style="margin-top:18px">
+            <div style="display:flex;justify-content:space-between"><strong>今日の進捗</strong><span id="dailyProgressText">0 / 8</span></div>
+            <div class="progress"><div id="dailyProgressBar"></div></div>
+          </div>
+          <p class="footer-note">初期版では「数と式」の問題を収録しています。学習記録はこの端末内に保存されます。</p>
+        </div>
+      </div>
+
+      <div class="section-grid">
+        <div class="card">
+          <h2>分野別の状態</h2>
+          <div id="unitList" class="list"></div>
+        </div>
+        <div class="card">
+          <h2>最近の失点原因</h2>
+          <div id="causeList" class="list"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="studyScreen" class="screen">
+      <div class="study-layout">
+        <div class="problem-panel">
+          <div class="study-top">
+            <div class="question-meta">
+              <span class="tag tag-blue" id="unitTag">数学I</span>
+              <span class="tag tag-green" id="difficultyTag">基礎</span>
+            </div>
+            <span id="questionCounter" class="pill">1 / 8</span>
+          </div>
+
+          <div id="questionText" class="question"></div>
+
+          <div id="strategyArea">
+            <h3>最初の方針を選んでください</h3>
+            <div id="strategyChoices" class="choice-grid"></div>
+            <button id="confirmStrategy" class="btn btn-primary" style="margin-top:12px" disabled>この方針で解く</button>
+          </div>
+
+          <div id="solveGuide" class="phase-box hidden">
+            <h3>途中式を書いて、最後の答えを入力</h3>
+            <p class="sub">正解だけでなく、式変形の流れが分かるように書いてみましょう。</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+              <button id="hintButton" class="btn btn-secondary">ヒントを見る（0/3）</button>
+              <button id="showQuestionStrategy" class="btn btn-ghost">選んだ方針を確認</button>
+            </div>
+            <div id="hintBox" class="notice notice-warn hidden"></div>
+          </div>
+        </div>
+
+        <div class="work-panel">
+          <div class="toolbar">
+            <button class="tool active" data-tool="pen">ペン</button>
+            <button class="tool" data-tool="eraser">消しゴム</button>
+            <button id="undoButton" class="tool">1つ戻す</button>
+            <button id="clearButton" class="tool">全消去</button>
+            <button id="gridButton" class="tool active">方眼</button>
+            <div class="toolbar-spacer"></div>
+            <label class="tool">太さ
+              <select id="penWidth" style="border:0;background:transparent">
+                <option value="2">細</option>
+                <option value="4" selected>中</option>
+                <option value="7">太</option>
+              </select>
+            </label>
+          </div>
+          <div id="canvasWrap" class="canvas-wrap grid">
+            <canvas id="workCanvas"></canvas>
+            <div id="canvasEmpty" class="canvas-empty">ここにタッチペンで途中式を書きます</div>
+          </div>
+          <div class="answer-bar">
+            <input id="answerInput" class="answer-input" placeholder="最後の答えを入力（例：x=2,3）" />
+            <button id="saveDraft" class="btn btn-ghost">下書き保存</button>
+            <button id="submitAnswer" class="btn btn-primary">採点する</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="resultDrawer" class="drawer hidden" role="dialog" aria-modal="true">
+    <div class="drawer-card">
+      <div class="drawer-head">
+        <h2>採点と振り返り</h2>
+        <button id="closeDrawer" class="btn btn-ghost btn-small">閉じる</button>
+      </div>
+      <div id="resultNotice" class="notice"></div>
+
+      <h3>模範的な考え方</h3>
+      <div id="solutionText" class="solution"></div>
+
+      <div id="selfCheckArea">
+        <h3 style="margin-top:18px">途中式を見比べてください</h3>
+        <div class="self-grid">
+          <button class="choice self-choice" data-self="good">途中式も適切だった</button>
+          <button class="choice self-choice" data-self="partial">答えは合ったが途中に不安がある</button>
+        </div>
+      </div>
+
+      <div id="causeArea">
+        <h3 style="margin-top:18px">今回の主なつまずきは？</h3>
+        <div class="cause-grid">
+          <button class="choice cause-choice" data-cause="問題文の読み違い">問題文の読み違い</button>
+          <button class="choice cause-choice" data-cause="解法が思いつかない">解法が思いつかない</button>
+          <button class="choice cause-choice" data-cause="公式・ルール忘れ">公式・ルール忘れ</button>
+          <button class="choice cause-choice" data-cause="計算・符号ミス">計算・符号ミス</button>
+        </div>
+      </div>
+
+      <button id="nextQuestion" class="btn btn-primary" style="width:100%;margin-top:18px" disabled>記録して次の問題へ</button>
+    </div>
+  </div>
+
+  <script>
+    const problems = [
+      {
+        id: "M1-A01",
+        unit: "数と式",
+        difficulty: "基礎",
+        question: "式 3x - 2(x - 4) を簡単にしなさい。",
+        strategies: ["分配法則でかっこを外して同類項をまとめる", "因数分解する", "平方完成する", "両辺を2乗する"],
+        strategyIndex: 0,
+        answers: ["x+8", "x + 8"],
+        hints: [
+          "かっこの前にある「−2」を、かっこの中の両方に掛けます。",
+          "3x - 2x + 8 の形に直します。",
+          "3x - 2(x - 4) = 3x - 2x + 8 = x + 8"
+        ],
+        solution: "分配法則を使います。\n3x - 2(x - 4)\n= 3x - 2x + 8\n= x + 8\n\n答え：x + 8",
+        group: "展開・整理"
+      },
+      {
+        id: "M1-A02",
+        unit: "数と式",
+        difficulty: "基礎",
+        question: "x² + 5x + 6 を因数分解しなさい。",
+        strategies: ["積が6、和が5になる2数を探す", "平方完成する", "判別式だけを求める", "両辺をxで割る"],
+        strategyIndex: 0,
+        answers: ["(x+2)(x+3)", "(x + 2)(x + 3)", "(x+3)(x+2)"],
+        hints: [
+          "かけて6、たして5になる2つの整数を考えます。",
+          "2と3を使います。",
+          "x² + 5x + 6 = (x + 2)(x + 3)"
+        ],
+        solution: "積が6、和が5になる2数は2と3です。\nx² + 5x + 6\n= (x + 2)(x + 3)\n\n答え：(x + 2)(x + 3)",
+        group: "因数分解"
+      },
+      {
+        id: "M1-A03",
+        unit: "数と式",
+        difficulty: "基礎",
+        question: "方程式 2x - 7 = 9 を解きなさい。",
+        strategies: ["定数項を移項してから係数で割る", "両辺を2乗する", "因数分解する", "平方完成する"],
+        strategyIndex: 0,
+        answers: ["x=8", "x = 8", "8"],
+        hints: [
+          "まず −7 を右辺へ移します。",
+          "2x = 16 になります。",
+          "2x - 7 = 9 → 2x = 16 → x = 8"
+        ],
+        solution: "−7を右辺へ移項します。\n2x - 7 = 9\n2x = 16\nx = 8\n\n答え：x = 8",
+        group: "一次方程式"
+      },
+      {
+        id: "M1-A04",
+        unit: "数と式",
+        difficulty: "標準",
+        question: "不等式 3x + 1 < 10 を解きなさい。",
+        strategies: ["定数項を移項し、正の数3で割る", "両辺を負の数で割って不等号を反転する", "因数分解する", "平方完成する"],
+        strategyIndex: 0,
+        answers: ["x<3", "x < 3"],
+        hints: [
+          "まず1を右辺へ移します。",
+          "3x < 9 となり、両辺を正の数3で割ります。",
+          "3x + 1 < 10 → 3x < 9 → x < 3"
+        ],
+        solution: "1を右辺へ移項します。\n3x + 1 < 10\n3x < 9\nx < 3\n\n正の数3で割るので、不等号の向きは変わりません。\n答え：x < 3",
+        group: "一次不等式"
+      },
+      {
+        id: "M1-A05",
+        unit: "数と式",
+        difficulty: "標準",
+        question: "√12 を簡単にしなさい。",
+        strategies: ["平方数を因数として外に出す", "分母を有理化する", "展開する", "対数を取る"],
+        strategyIndex: 0,
+        answers: ["2√3", "2sqrt3", "2*sqrt(3)", "2√(3)"],
+        hints: [
+          "12を、平方数4を含む積に分けます。",
+          "√12 = √(4×3) と考えます。",
+          "√12 = √4 × √3 = 2√3"
+        ],
+        solution: "12 = 4 × 3 と分けます。\n√12 = √(4 × 3)\n= √4 × √3\n= 2√3\n\n答え：2√3",
+        group: "根号"
+      },
+      {
+        id: "M1-A06",
+        unit: "数と式",
+        difficulty: "標準",
+        question: "(x + 3)² を展開しなさい。",
+        strategies: ["(a+b)²=a²+2ab+b²を使う", "和と差の積を使う", "因数分解する", "判別式を使う"],
+        strategyIndex: 0,
+        answers: ["x²+6x+9", "x^2+6x+9", "x² + 6x + 9"],
+        hints: [
+          "平方の公式を使います。",
+          "a=x、b=3 とします。",
+          "(x + 3)² = x² + 2・x・3 + 9 = x² + 6x + 9"
+        ],
+        solution: "(a+b)²=a²+2ab+b² を使います。\n(x + 3)²\n= x² + 2・x・3 + 3²\n= x² + 6x + 9\n\n答え：x² + 6x + 9",
+        group: "展開"
+      },
+      {
+        id: "M1-A07",
+        unit: "数と式",
+        difficulty: "標準",
+        question: "x² - 9 を因数分解しなさい。",
+        strategies: ["a²-b²=(a+b)(a-b)を使う", "積が−9、和が0の2数を探すだけ", "平方完成する", "分母を有理化する"],
+        strategyIndex: 0,
+        answers: ["(x+3)(x-3)", "(x-3)(x+3)", "(x + 3)(x - 3)"],
+        hints: [
+          "平方の差の公式を使います。",
+          "9 = 3²です。",
+          "x² - 9 = x² - 3² = (x + 3)(x - 3)"
+        ],
+        solution: "平方の差の公式 a²-b²=(a+b)(a-b) を使います。\nx² - 9\n= x² - 3²\n= (x + 3)(x - 3)\n\n答え：(x + 3)(x - 3)",
+        group: "因数分解"
+      },
+      {
+        id: "M1-A08",
+        unit: "数と式",
+        difficulty: "標準",
+        question: "連立方程式 x + y = 7、x - y = 1 を解きなさい。",
+        strategies: ["2式を加えて一方の文字を消去する", "2式を掛け合わせる", "平方完成する", "グラフだけを推測する"],
+        strategyIndex: 0,
+        answers: ["x=4,y=3", "x = 4, y = 3", "(4,3)", "x=4 y=3"],
+        hints: [
+          "2式を加えるとyが消えます。",
+          "2x = 8 なので x = 4 です。",
+          "x=4を x+y=7 に代入して y=3。よって x=4, y=3"
+        ],
+        solution: "2式を加えてyを消去します。\n(x + y) + (x - y) = 7 + 1\n2x = 8\nx = 4\n\nx + y = 7 に代入して\n4 + y = 7\n y = 3\n\n答え：x = 4、y = 3",
+        group: "連立方程式"
+      }
+    ];
+
+    const STORAGE_KEY = "bunkeiMathTrainer_v01";
+    const todayKey = () => new Date().toISOString().slice(0,10);
+
+    const defaultState = {
+      completed: [],
+      attempts: [],
+      causes: {},
+      drafts: {},
+      lastStudyDate: null,
+      streak: 0
+    };
+
+    let state = loadState();
+    let queue = [...problems];
+    let currentIndex = 0;
+    let selectedStrategy = null;
+    let hintLevel = 0;
+    let selectedSelf = null;
+    let selectedCause = null;
+    let lastResultCorrect = false;
+
+    function loadState() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        return { ...defaultState, ...(saved || {}) };
+      } catch {
+        return { ...defaultState };
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const el = document.getElementById("saveState");
+      el.textContent = "保存しました";
+      setTimeout(() => el.textContent = "端末内に自動保存", 900);
+    }
+
+    function normalizeAnswer(value) {
+      return value
+        .toLowerCase()
+        .replace(/\s+/g, "")
+        .replace(/＝/g, "=")
+        .replace(/，/g, ",")
+        .replace(/−/g, "-")
+        .replace(/√\((\d+)\)/g, "√$1")
+        .replace(/x\^2/g, "x²");
+    }
+
+    function updateStreak() {
+      const today = todayKey();
+      if (state.lastStudyDate === today) return;
+      if (!state.lastStudyDate) {
+        state.streak = 1;
+      } else {
+        const prev = new Date(state.lastStudyDate + "T00:00:00");
+        const now = new Date(today + "T00:00:00");
+        const diff = Math.round((now - prev) / 86400000);
+        state.streak = diff === 1 ? state.streak + 1 : 1;
+      }
+      state.lastStudyDate = today;
+    }
+
+    function showScreen(id) {
+      document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      if (id === "homeScreen") renderDashboard();
+      if (id === "studyScreen") setTimeout(resizeCanvas, 30);
+    }
+
+    function renderDashboard() {
+      const today = todayKey();
+      const todayDone = state.attempts.filter(a => a.date === today).length;
+      document.getElementById("todayCount").textContent = todayDone;
+      document.getElementById("streakCount").textContent = state.streak || 0;
+
+      const uniqueMastered = new Set(state.completed).size;
+      const mastery = Math.round((uniqueMastered / problems.length) * 100);
+      document.getElementById("masteryRate").textContent = mastery + "%";
+      document.getElementById("dailyProgressText").textContent = Math.min(todayDone, 8) + " / 8";
+      document.getElementById("dailyProgressBar").style.width = Math.min(100, (todayDone/8)*100) + "%";
+
+      const unitMap = {};
+      problems.forEach(p => {
+        unitMap[p.group] ||= { total: 0, mastered: 0 };
+        unitMap[p.group].total++;
+        if (state.completed.includes(p.id)) unitMap[p.group].mastered++;
+      });
+      const unitList = document.getElementById("unitList");
+      unitList.innerHTML = Object.entries(unitMap).map(([name, v]) => {
+        const pct = Math.round(v.mastered / v.total * 100);
+        return `<div class="list-row"><div><strong>${name}</strong><div class="progress" style="width:180px;max-width:45vw"><div style="width:${pct}%"></div></div></div><span class="tag tag-blue">${pct}%</span></div>`;
+      }).join("");
+
+      const causes = Object.entries(state.causes).sort((a,b) => b[1]-a[1]);
+      const causeList = document.getElementById("causeList");
+      causeList.innerHTML = causes.length
+        ? causes.slice(0,5).map(([name,count]) => `<div class="list-row"><span>${name}</span><span class="tag tag-amber">${count}回</span></div>`).join("")
+        : `<p class="sub">まだ記録がありません。問題を解くと、つまずきの傾向が表示されます。</p>`;
+    }
+
+    function startStudy() {
+      queue = [...problems];
+      currentIndex = 0;
+      updateStreak();
+      saveState();
+      loadProblem();
+      showScreen("studyScreen");
+    }
+
+    function loadProblem() {
+      if (currentIndex >= queue.length) {
+        alert("本日の学習が完了しました。ホームに戻ります。");
+        showScreen("homeScreen");
+        return;
+      }
+      const p = queue[currentIndex];
+      selectedStrategy = null;
+      hintLevel = 0;
+      selectedSelf = null;
+      selectedCause = null;
+      lastResultCorrect = false;
+
+      document.getElementById("unitTag").textContent = "数学I・" + p.unit;
+      document.getElementById("difficultyTag").textContent = p.difficulty;
+      document.getElementById("questionCounter").textContent = `${currentIndex+1} / ${queue.length}`;
+      document.getElementById("questionText").textContent = p.question;
+      document.getElementById("strategyChoices").innerHTML = p.strategies.map((s, i) =>
+        `<button class="choice strategy-choice" data-index="${i}">${String.fromCharCode(65+i)}. ${s}</button>`
+      ).join("");
+      document.getElementById("confirmStrategy").disabled = true;
+      document.getElementById("strategyArea").classList.remove("hidden");
+      document.getElementById("solveGuide").classList.add("hidden");
+      document.getElementById("hintBox").classList.add("hidden");
+      document.getElementById("hintButton").textContent = "ヒントを見る（0/3）";
+      document.getElementById("answerInput").value = "";
+      clearCanvas(false);
+      loadDraftForCurrent();
+      bindStrategyChoices();
+    }
+
+    function bindStrategyChoices() {
+      document.querySelectorAll(".strategy-choice").forEach(btn => {
+        btn.addEventListener("click", () => {
+          selectedStrategy = Number(btn.dataset.index);
+          document.querySelectorAll(".strategy-choice").forEach(b => b.classList.remove("selected"));
+          btn.classList.add("selected");
+          document.getElementById("confirmStrategy").disabled = false;
+        });
+      });
+    }
+
+    function confirmStrategy() {
+      const p = queue[currentIndex];
+      document.querySelectorAll(".strategy-choice").forEach((btn, i) => {
+        btn.classList.remove("correct","wrong");
+        if (i === p.strategyIndex) btn.classList.add("correct");
+        else if (i === selectedStrategy) btn.classList.add("wrong");
+        btn.disabled = true;
+      });
+      document.getElementById("confirmStrategy").disabled = true;
+      setTimeout(() => {
+        document.getElementById("strategyArea").classList.add("hidden");
+        document.getElementById("solveGuide").classList.remove("hidden");
+      }, 650);
+    }
+
+    function showHint() {
+      const p = queue[currentIndex];
+      if (hintLevel >= 3) return;
+      hintLevel++;
+      const box = document.getElementById("hintBox");
+      box.classList.remove("hidden");
+      box.innerHTML = `<strong>ヒント${hintLevel}</strong><br>${p.hints[hintLevel-1]}`;
+      document.getElementById("hintButton").textContent = `ヒントを見る（${hintLevel}/3）`;
+      if (hintLevel >= 3) document.getElementById("hintButton").disabled = true;
+    }
+
+    function submitAnswer() {
+      const raw = document.getElementById("answerInput").value.trim();
+      if (!raw) {
+        alert("最後の答えを入力してください。");
+        return;
+      }
+      const p = queue[currentIndex];
+      const user = normalizeAnswer(raw);
+      lastResultCorrect = p.answers.some(a => normalizeAnswer(a) === user);
+
+      const notice = document.getElementById("resultNotice");
+      notice.className = "notice " + (lastResultCorrect ? "notice-success" : "notice-danger");
+      notice.innerHTML = lastResultCorrect
+        ? `<strong>正解です。</strong><br>次に、途中式と方針まで適切だったかを確認します。`
+        : `<strong>今回は不正解です。</strong><br>答えだけでなく、どこでつまずいたかを記録して復習につなげます。`;
+
+      document.getElementById("solutionText").textContent = p.solution;
+      document.getElementById("causeArea").classList.toggle("hidden", lastResultCorrect);
+      document.getElementById("selfCheckArea").classList.remove("hidden");
+      document.querySelectorAll(".self-choice,.cause-choice").forEach(b => b.classList.remove("selected"));
+      document.getElementById("nextQuestion").disabled = true;
+      document.getElementById("resultDrawer").classList.remove("hidden");
+    }
+
+    function updateNextEnabled() {
+      const ok = selectedSelf && (lastResultCorrect || selectedCause);
+      document.getElementById("nextQuestion").disabled = !ok;
+    }
+
+    function recordAndNext() {
+      const p = queue[currentIndex];
+      const answer = document.getElementById("answerInput").value.trim();
+      const canvasData = canvas.toDataURL("image/png");
+      const strategyCorrect = selectedStrategy === p.strategyIndex;
+      const mastered = lastResultCorrect && selectedSelf === "good" && strategyCorrect && hintLevel === 0;
+
+      const attempt = {
+        problemId: p.id,
+        date: todayKey(),
+        timestamp: Date.now(),
+        correct: lastResultCorrect,
+        answer,
+        strategyCorrect,
+        hintLevel,
+        self: selectedSelf,
+        cause: selectedCause || null,
+        drawing: canvasData
+      };
+      state.attempts.push(attempt);
+
+      if (mastered && !state.completed.includes(p.id)) {
+        state.completed.push(p.id);
+      }
+      if (selectedCause) {
+        state.causes[selectedCause] = (state.causes[selectedCause] || 0) + 1;
+      }
+      delete state.drafts[p.id];
+      saveState();
+
+      document.getElementById("resultDrawer").classList.add("hidden");
+      currentIndex++;
+      loadProblem();
+    }
+
+    // Canvas
+    const canvas = document.getElementById("workCanvas");
+    const ctx = canvas.getContext("2d");
+    let drawing = false;
+    let currentTool = "pen";
+    let strokes = [];
+    let currentStroke = null;
+    let dpr = Math.max(1, window.devicePixelRatio || 1);
+
+    function resizeCanvas() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const snapshot = canvas.width && canvas.height ? canvas.toDataURL() : null;
+      dpr = Math.max(1, window.devicePixelRatio || 1);
+      canvas.width = Math.floor(rect.width * dpr);
+      canvas.height = Math.floor(rect.height * dpr);
+      canvas.style.width = rect.width + "px";
+      canvas.style.height = rect.height + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      redraw();
+      if (!strokes.length && snapshot) {
+        const img = new Image();
+        img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        img.src = snapshot;
+      }
+    }
+
+    function pointFromEvent(e) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    function beginStroke(e) {
+      if (document.getElementById("solveGuide").classList.contains("hidden")) return;
+      e.preventDefault();
+      canvas.setPointerCapture?.(e.pointerId);
+      drawing = true;
+      const p = pointFromEvent(e);
+      currentStroke = {
+        tool: currentTool,
+        width: Number(document.getElementById("penWidth").value),
+        points: [p]
+      };
+      strokes.push(currentStroke);
+      document.getElementById("canvasEmpty").classList.add("hidden");
+    }
+
+    function moveStroke(e) {
+      if (!drawing || !currentStroke) return;
+      e.preventDefault();
+      const p = pointFromEvent(e);
+      currentStroke.points.push(p);
+      drawSegment(currentStroke, currentStroke.points.length - 2);
+    }
+
+    function endStroke(e) {
+      if (!drawing) return;
+      e.preventDefault();
+      drawing = false;
+      currentStroke = null;
+    }
+
+    function drawSegment(stroke, index) {
+      const a = stroke.points[index];
+      const b = stroke.points[index + 1];
+      if (!a || !b) return;
+      ctx.save();
+      if (stroke.tool === "eraser") {
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.lineWidth = Math.max(18, stroke.width * 5);
+      } else {
+        ctx.globalCompositeOperation = "source-over";
+        ctx.strokeStyle = "#172033";
+        ctx.lineWidth = stroke.width;
+      }
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function redraw() {
+      const rect = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      strokes.forEach(stroke => {
+        for (let i = 0; i < stroke.points.length - 1; i++) drawSegment(stroke, i);
+      });
+      document.getElementById("canvasEmpty").classList.toggle("hidden", strokes.length > 0);
+    }
+
+    function clearCanvas(confirmUser = true) {
+      if (confirmUser && strokes.length && !confirm("手書き内容をすべて消去しますか？")) return;
+      strokes = [];
+      redraw();
+    }
+
+    function saveDraftForCurrent() {
+      const p = queue[currentIndex];
+      state.drafts[p.id] = {
+        strokes,
+        answer: document.getElementById("answerInput").value,
+        updatedAt: Date.now()
+      };
+      saveState();
+      alert("下書きを保存しました。");
+    }
+
+    function loadDraftForCurrent() {
+      const p = queue[currentIndex];
+      const draft = state.drafts[p.id];
+      if (!draft) return;
+      strokes = Array.isArray(draft.strokes) ? draft.strokes : [];
+      document.getElementById("answerInput").value = draft.answer || "";
+      setTimeout(redraw, 50);
+    }
+
+    canvas.addEventListener("pointerdown", beginStroke);
+    canvas.addEventListener("pointermove", moveStroke);
+    canvas.addEventListener("pointerup", endStroke);
+    canvas.addEventListener("pointercancel", endStroke);
+
+    document.querySelectorAll("[data-tool]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        currentTool = btn.dataset.tool;
+        document.querySelectorAll("[data-tool]").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
+    });
+
+    document.getElementById("undoButton").addEventListener("click", () => { strokes.pop(); redraw(); });
+    document.getElementById("clearButton").addEventListener("click", () => clearCanvas(true));
+    document.getElementById("gridButton").addEventListener("click", (e) => {
+      document.getElementById("canvasWrap").classList.toggle("grid");
+      e.currentTarget.classList.toggle("active");
+    });
+    window.addEventListener("resize", () => setTimeout(resizeCanvas, 80));
+
+    // UI events
+    document.getElementById("startStudy").addEventListener("click", startStudy);
+    document.getElementById("homeButton").addEventListener("click", () => showScreen("homeScreen"));
+    document.getElementById("confirmStrategy").addEventListener("click", confirmStrategy);
+    document.getElementById("hintButton").addEventListener("click", showHint);
+    document.getElementById("showQuestionStrategy").addEventListener("click", () => {
+      const p = queue[currentIndex];
+      alert("選択した方針：\n" + p.strategies[selectedStrategy]);
+    });
+    document.getElementById("submitAnswer").addEventListener("click", submitAnswer);
+    document.getElementById("saveDraft").addEventListener("click", saveDraftForCurrent);
+    document.getElementById("closeDrawer").addEventListener("click", () => document.getElementById("resultDrawer").classList.add("hidden"));
+    document.getElementById("nextQuestion").addEventListener("click", recordAndNext);
+
+    document.querySelectorAll(".self-choice").forEach(btn => {
+      btn.addEventListener("click", () => {
+        selectedSelf = btn.dataset.self;
+        document.querySelectorAll(".self-choice").forEach(b => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        updateNextEnabled();
+      });
+    });
+    document.querySelectorAll(".cause-choice").forEach(btn => {
+      btn.addEventListener("click", () => {
+        selectedCause = btn.dataset.cause;
+        document.querySelectorAll(".cause-choice").forEach(b => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        updateNextEnabled();
+      });
+    });
+
+    document.getElementById("resetProgress").addEventListener("click", () => {
+      if (!confirm("すべての学習履歴と下書きを初期化しますか？")) return;
+      state = { ...defaultState, completed: [], attempts: [], causes: {}, drafts: {} };
+      saveState();
+      renderDashboard();
+    });
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+    }
+
+    renderDashboard();
+  </script>
+</body>
+</html>

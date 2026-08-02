@@ -1,0 +1,9 @@
+{
+  "name": "文系数学トレーナー",
+  "short_name": "文系数学",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#132238",
+  "icons": []
+}

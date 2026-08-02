@@ -159,6 +159,13 @@
       border: 1px solid var(--line); border-radius: 11px; padding: 11px 13px; outline: none;
     }
     .answer-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(23,105,170,.12); }
+    .answer-mode-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px 12px 0; border-top:1px solid var(--line); background:#fff; }
+    .answer-mode-note { color:var(--muted); font-size:12px; }
+    .answer-handwrite { position:relative; height:132px; margin:10px 12px 0; border:2px dashed var(--line); border-radius:13px; background:#fff; overflow:hidden; touch-action:none; }
+    .answer-handwrite canvas { position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
+    .answer-handwrite-label { position:absolute; inset:0; display:grid; place-items:center; color:#a2afc0; pointer-events:none; }
+    .manual-grade { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+
 
     .drawer {
       position: fixed; z-index: 50; inset: 0; background: rgba(15,23,42,.45);
@@ -313,10 +320,21 @@
             <canvas id="workCanvas"></canvas>
             <div id="canvasEmpty" class="canvas-empty">ここにタッチペンで途中式を書きます</div>
           </div>
-          <div class="answer-bar">
-            <input id="answerInput" class="answer-input" placeholder="最後の答えを入力（例：x=2,3）" />
-            <button id="saveDraft" class="btn btn-ghost">下書き保存</button>
-            <button id="submitAnswer" class="btn btn-primary">採点する</button>
+          <div>
+            <div class="answer-mode-row">
+              <button id="keyboardMode" class="tool active">文字入力</button>
+              <button id="penAnswerMode" class="tool">ペン入力</button>
+              <span id="answerModeNote" class="answer-mode-note">大文字・小文字、全角・半角、空白の違いは無視して採点します。</span>
+            </div>
+            <div id="penAnswerBox" class="answer-handwrite hidden">
+              <canvas id="answerCanvas"></canvas>
+              <div id="answerCanvasLabel" class="answer-handwrite-label">ここに最後の答えをペンで書きます</div>
+            </div>
+            <div class="answer-bar">
+              <input id="answerInput" class="answer-input" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="最後の答えを入力（例：x=2,3）" />
+              <button id="saveDraft" class="btn btn-ghost">下書き保存</button>
+              <button id="submitAnswer" class="btn btn-primary">採点する</button>
+            </div>
           </div>
         </div>
       </div>
@@ -330,6 +348,13 @@
         <button id="closeDrawer" class="btn btn-ghost btn-small">閉じる</button>
       </div>
       <div id="resultNotice" class="notice"></div>
+      <div id="manualGradeArea" class="hidden">
+        <p class="sub">手書き回答は、下の模範解答と見比べて判定してください。</p>
+        <div class="manual-grade">
+          <button id="manualCorrect" class="choice">答えは合っている</button>
+          <button id="manualWrong" class="choice">答えが違っている</button>
+        </div>
+      </div>
 
       <h3>模範的な考え方</h3>
       <div id="solutionText" class="solution"></div>
@@ -508,6 +533,8 @@
     let selectedSelf = null;
     let selectedCause = null;
     let lastResultCorrect = false;
+    let answerMode = "keyboard";
+    let awaitingManualGrade = false;
 
     function loadState() {
       try {
@@ -526,14 +553,105 @@
     }
 
     function normalizeAnswer(value) {
-      return value
+      return String(value ?? "")
+        .normalize("NFKC")
         .toLowerCase()
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")
         .replace(/\s+/g, "")
-        .replace(/＝/g, "=")
-        .replace(/，/g, ",")
-        .replace(/−/g, "-")
-        .replace(/√\((\d+)\)/g, "√$1")
-        .replace(/x\^2/g, "x²");
+        .replace(/[＝]/g, "=")
+        .replace(/[，、；;]/g, ",")
+        .replace(/[−–—ー]/g, "-")
+        .replace(/[＋]/g, "+")
+        .replace(/[×・·]/g, "*")
+        .replace(/[÷]/g, "/")
+        .replace(/[（]/g, "(")
+        .replace(/[）]/g, ")")
+        .replace(/²/g, "^2")
+        .replace(/³/g, "^3")
+        .replace(/√\(([^)]+)\)/g, "sqrt($1)")
+        .replace(/√([0-9.]+)/g, "sqrt($1)")
+        .replace(/答え[:：]?/g, "")
+        .replace(/解[:：]?/g, "")
+        .replace(/。$/g, "");
+    }
+
+    function normalizeAssignment(value) {
+      return normalizeAnswer(value)
+        .replace(/^x=/, "")
+        .replace(/^y=/, "");
+    }
+
+    function parseAssignments(value) {
+      const text = normalizeAnswer(value);
+      const result = {};
+      const re = /([a-z])=([^,]+)/g;
+      let m;
+      while ((m = re.exec(text))) result[m[1]] = m[2];
+      return result;
+    }
+
+    function toJsExpression(value) {
+      let t = normalizeAnswer(value);
+      t = t.replace(/\^/g, "**");
+      t = t.replace(/sqrt\(/g, "Math.sqrt(");
+      t = t.replace(/(\d|\)|x)(?=x|\()/g, "$1*");
+      t = t.replace(/\)(?=\d|x|\()/g, ")*");
+      return t;
+    }
+
+    function safeEvalExpression(expr, xValue = 0) {
+      const js = toJsExpression(expr);
+      if (!/^[0-9x+\-*/().,a-zA-Z_]+$/.test(js)) return NaN;
+      if (/[^0-9x+\-*/().,Mathsqrt]/.test(js.replace(/Math\.sqrt/g, "Mathsqrt"))) return NaN;
+      try {
+        return Function("x", `"use strict"; return (${js});`)(xValue);
+      } catch {
+        return NaN;
+      }
+    }
+
+    function expressionsEquivalent(a, b) {
+      const samples = [-3.25, -1.5, -0.4, 0.7, 2.2, 4.1];
+      let checked = 0;
+      for (const x of samples) {
+        const av = safeEvalExpression(a, x);
+        const bv = safeEvalExpression(b, x);
+        if (!Number.isFinite(av) || !Number.isFinite(bv)) continue;
+        checked++;
+        if (Math.abs(av - bv) > 1e-7 * Math.max(1, Math.abs(av), Math.abs(bv))) return false;
+      }
+      return checked >= 3;
+    }
+
+    function isAnswerCorrect(problem, raw) {
+      const user = normalizeAnswer(raw);
+      if (!user) return false;
+
+      // 完全一致（表記ゆれを正規化した後）
+      if (problem.answers.some(a => normalizeAnswer(a) === user)) return true;
+
+      // 連立方程式：xとyの順番、空白、全角を問わない
+      if (problem.id === "M1-A08") {
+        const u = parseAssignments(user);
+        if (u.x !== undefined && u.y !== undefined) {
+          return expressionsEquivalent(u.x, "4") && expressionsEquivalent(u.y, "3");
+        }
+        const tuple = user.match(/^\(?([^,]+),([^,]+)\)?$/);
+        return !!tuple && expressionsEquivalent(tuple[1], "4") && expressionsEquivalent(tuple[2], "3");
+      }
+
+      // 不等式：全角記号、空白、xの大文字小文字を吸収
+      if (problem.id === "M1-A04") {
+        return /^(x<3|3>x)$/.test(user);
+      }
+
+      // 方程式：x=8 と 8 の両方を許可
+      if (problem.id === "M1-A03") {
+        return expressionsEquivalent(user.replace(/^x=/, ""), "8");
+      }
+
+      // 式・因数分解・根号：数学的に同値なら正解
+      return problem.answers.some(a => expressionsEquivalent(user, a));
     }
 
     function updateStreak() {
@@ -610,6 +728,8 @@
       selectedSelf = null;
       selectedCause = null;
       lastResultCorrect = false;
+      awaitingManualGrade = false;
+      setAnswerMode("keyboard");
 
       document.getElementById("unitTag").textContent = "数学I・" + p.unit;
       document.getElementById("difficultyTag").textContent = p.difficulty;
@@ -625,6 +745,7 @@
       document.getElementById("hintButton").textContent = "ヒントを見る（0/3）";
       document.getElementById("answerInput").value = "";
       clearCanvas(false);
+      clearAnswerCanvas();
       loadDraftForCurrent();
       bindStrategyChoices();
     }
@@ -667,27 +788,62 @@
     }
 
     function submitAnswer() {
-      const raw = document.getElementById("answerInput").value.trim();
-      if (!raw) {
-        alert("最後の答えを入力してください。");
-        return;
-      }
       const p = queue[currentIndex];
-      const user = normalizeAnswer(raw);
-      lastResultCorrect = p.answers.some(a => normalizeAnswer(a) === user);
+      awaitingManualGrade = answerMode === "pen";
+
+      if (answerMode === "keyboard") {
+        const raw = document.getElementById("answerInput").value.trim();
+        if (!raw) {
+          alert("最後の答えを入力してください。");
+          return;
+        }
+        lastResultCorrect = isAnswerCorrect(p, raw);
+      } else {
+        if (!answerStrokes.length) {
+          alert("最後の答えをペンで書いてください。");
+          return;
+        }
+        lastResultCorrect = false;
+      }
 
       const notice = document.getElementById("resultNotice");
-      notice.className = "notice " + (lastResultCorrect ? "notice-success" : "notice-danger");
-      notice.innerHTML = lastResultCorrect
-        ? `<strong>正解です。</strong><br>次に、途中式と方針まで適切だったかを確認します。`
-        : `<strong>今回は不正解です。</strong><br>答えだけでなく、どこでつまずいたかを記録して復習につなげます。`;
+      const manualArea = document.getElementById("manualGradeArea");
+      manualArea.classList.toggle("hidden", !awaitingManualGrade);
+      document.getElementById("manualCorrect").classList.remove("selected");
+      document.getElementById("manualWrong").classList.remove("selected");
+
+      if (awaitingManualGrade) {
+        notice.className = "notice notice-warn";
+        notice.innerHTML = `<strong>手書き回答を確認します。</strong><br>現段階では数式の誤認識を避けるため、模範解答と見比べて本人が判定します。`;
+      } else {
+        notice.className = "notice " + (lastResultCorrect ? "notice-success" : "notice-danger");
+        notice.innerHTML = lastResultCorrect
+          ? `<strong>正解です。</strong><br>大文字・小文字、全角・半角、空白、一般的な数式表記の違いを吸収して採点しました。`
+          : `<strong>今回は不正解です。</strong><br>入力表記ではなく、数学的な内容を照合しています。模範解答と比べて確認しましょう。`;
+      }
 
       document.getElementById("solutionText").textContent = p.solution;
-      document.getElementById("causeArea").classList.toggle("hidden", lastResultCorrect);
-      document.getElementById("selfCheckArea").classList.remove("hidden");
+      document.getElementById("causeArea").classList.toggle("hidden", lastResultCorrect || awaitingManualGrade);
+      document.getElementById("selfCheckArea").classList.toggle("hidden", awaitingManualGrade);
       document.querySelectorAll(".self-choice,.cause-choice").forEach(b => b.classList.remove("selected"));
       document.getElementById("nextQuestion").disabled = true;
       document.getElementById("resultDrawer").classList.remove("hidden");
+    }
+
+    function setManualGrade(correct) {
+      awaitingManualGrade = false;
+      lastResultCorrect = correct;
+      document.getElementById("manualCorrect").classList.toggle("selected", correct);
+      document.getElementById("manualWrong").classList.toggle("selected", !correct);
+      document.getElementById("resultNotice").className = "notice " + (correct ? "notice-success" : "notice-danger");
+      document.getElementById("resultNotice").innerHTML = correct
+        ? `<strong>正解として記録します。</strong><br>次に、途中式と方針まで適切だったかを確認してください。`
+        : `<strong>不正解として記録します。</strong><br>つまずいた原因を選んで復習につなげます。`;
+      document.getElementById("selfCheckArea").classList.remove("hidden");
+      document.getElementById("causeArea").classList.toggle("hidden", correct);
+      selectedSelf = null;
+      selectedCause = null;
+      updateNextEnabled();
     }
 
     function updateNextEnabled() {
@@ -697,8 +853,9 @@
 
     function recordAndNext() {
       const p = queue[currentIndex];
-      const answer = document.getElementById("answerInput").value.trim();
+      const answer = answerMode === "keyboard" ? document.getElementById("answerInput").value.trim() : "[手書き回答]";
       const canvasData = canvas.toDataURL("image/png");
+      const answerDrawing = answerMode === "pen" ? answerCanvas.toDataURL("image/png") : null;
       const strategyCorrect = selectedStrategy === p.strategyIndex;
       const mastered = lastResultCorrect && selectedSelf === "good" && strategyCorrect && hintLevel === 0;
 
@@ -712,7 +869,9 @@
         hintLevel,
         self: selectedSelf,
         cause: selectedCause || null,
-        drawing: canvasData
+        drawing: canvasData,
+        answerMode,
+        answerDrawing
       };
       state.attempts.push(attempt);
 
@@ -833,6 +992,8 @@
       state.drafts[p.id] = {
         strokes,
         answer: document.getElementById("answerInput").value,
+        answerMode,
+        answerStrokes,
         updatedAt: Date.now()
       };
       saveState();
@@ -845,7 +1006,9 @@
       if (!draft) return;
       strokes = Array.isArray(draft.strokes) ? draft.strokes : [];
       document.getElementById("answerInput").value = draft.answer || "";
-      setTimeout(redraw, 50);
+      answerStrokes = Array.isArray(draft.answerStrokes) ? draft.answerStrokes : [];
+      setAnswerMode(draft.answerMode === "pen" ? "pen" : "keyboard");
+      setTimeout(() => { redraw(); if (answerMode === "pen") redrawAnswerCanvas(); }, 50);
     }
 
     canvas.addEventListener("pointerdown", beginStroke);
@@ -867,7 +1030,105 @@
       document.getElementById("canvasWrap").classList.toggle("grid");
       e.currentTarget.classList.toggle("active");
     });
-    window.addEventListener("resize", () => setTimeout(resizeCanvas, 80));
+    window.addEventListener("resize", () => setTimeout(() => { resizeCanvas(); if (answerMode === "pen") resizeAnswerCanvas(); }, 80));
+
+
+    // 最終回答用の小型手書きキャンバス
+    const answerCanvas = document.getElementById("answerCanvas");
+    const answerCtx = answerCanvas.getContext("2d");
+    let answerDrawingNow = false;
+    let answerStrokes = [];
+    let answerStroke = null;
+
+    function resizeAnswerCanvas() {
+      const rect = answerCanvas.parentElement.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      answerCanvas.width = Math.floor(rect.width * dpr);
+      answerCanvas.height = Math.floor(rect.height * dpr);
+      answerCanvas.style.width = rect.width + "px";
+      answerCanvas.style.height = rect.height + "px";
+      answerCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      answerCtx.lineCap = "round";
+      answerCtx.lineJoin = "round";
+      redrawAnswerCanvas();
+    }
+
+    function answerPoint(e) {
+      const rect = answerCanvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    function beginAnswerStroke(e) {
+      e.preventDefault();
+      answerDrawingNow = true;
+      answerCanvas.setPointerCapture?.(e.pointerId);
+      answerStroke = { width: Number(document.getElementById("penWidth").value), points: [answerPoint(e)] };
+      answerStrokes.push(answerStroke);
+      document.getElementById("answerCanvasLabel").classList.add("hidden");
+    }
+
+    function moveAnswerStroke(e) {
+      if (!answerDrawingNow || !answerStroke) return;
+      e.preventDefault();
+      answerStroke.points.push(answerPoint(e));
+      drawAnswerSegment(answerStroke, answerStroke.points.length - 2);
+    }
+
+    function endAnswerStroke(e) {
+      if (!answerDrawingNow) return;
+      e.preventDefault();
+      answerDrawingNow = false;
+      answerStroke = null;
+    }
+
+    function drawAnswerSegment(stroke, i) {
+      const a = stroke.points[i], b = stroke.points[i+1];
+      if (!a || !b) return;
+      answerCtx.save();
+      answerCtx.strokeStyle = "#172033";
+      answerCtx.lineWidth = stroke.width;
+      answerCtx.beginPath();
+      answerCtx.moveTo(a.x, a.y);
+      answerCtx.lineTo(b.x, b.y);
+      answerCtx.stroke();
+      answerCtx.restore();
+    }
+
+    function redrawAnswerCanvas() {
+      const rect = answerCanvas.getBoundingClientRect();
+      answerCtx.clearRect(0, 0, rect.width, rect.height);
+      answerStrokes.forEach(stroke => {
+        for (let i=0; i<stroke.points.length-1; i++) drawAnswerSegment(stroke, i);
+      });
+      document.getElementById("answerCanvasLabel").classList.toggle("hidden", answerStrokes.length > 0);
+    }
+
+    function clearAnswerCanvas() {
+      answerStrokes = [];
+      if (answerCtx) redrawAnswerCanvas();
+    }
+
+    function setAnswerMode(mode) {
+      answerMode = mode;
+      const pen = mode === "pen";
+      document.getElementById("keyboardMode").classList.toggle("active", !pen);
+      document.getElementById("penAnswerMode").classList.toggle("active", pen);
+      document.getElementById("answerInput").classList.toggle("hidden", pen);
+      document.getElementById("penAnswerBox").classList.toggle("hidden", !pen);
+      document.getElementById("answerModeNote").textContent = pen
+        ? "ペン回答は模範解答と比較して自己採点します。誤認識による不正解は起こりません。"
+        : "大文字・小文字、全角・半角、空白、一般的な表記の違いは無視して採点します。";
+      if (pen) setTimeout(resizeAnswerCanvas, 30);
+    }
+
+    answerCanvas.addEventListener("pointerdown", beginAnswerStroke);
+    answerCanvas.addEventListener("pointermove", moveAnswerStroke);
+    answerCanvas.addEventListener("pointerup", endAnswerStroke);
+    answerCanvas.addEventListener("pointercancel", endAnswerStroke);
+    document.getElementById("keyboardMode").addEventListener("click", () => setAnswerMode("keyboard"));
+    document.getElementById("penAnswerMode").addEventListener("click", () => setAnswerMode("pen"));
+    document.getElementById("manualCorrect").addEventListener("click", () => setManualGrade(true));
+    document.getElementById("manualWrong").addEventListener("click", () => setManualGrade(false));
 
     // UI events
     document.getElementById("startStudy").addEventListener("click", startStudy);

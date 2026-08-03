@@ -1,4 +1,4 @@
-const CACHE = "bunkei-math-v02";
+const CACHE = "bunkei-math-v03";
 const ASSETS = ["./", "./index.html", "./manifest.json"];
 self.addEventListener("install", event => {
   self.skipWaiting();
@@ -13,8 +13,8 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   event.respondWith(
     fetch(event.request).then(response => {
-      const clone = response.clone();
-      caches.open(CACHE).then(cache => cache.put(event.request, clone));
+      const copy = response.clone();
+      caches.open(CACHE).then(cache => cache.put(event.request, copy));
       return response;
     }).catch(() => caches.match(event.request))
   );

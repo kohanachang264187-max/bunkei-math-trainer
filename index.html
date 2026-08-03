@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <link rel="manifest" href="./manifest.json" />
-  <title>文系数学トレーナー</title>
+  <title>Math Mentor AI v0.3</title>
   <style>
     :root {
       --bg: #f4f7fb;
@@ -165,6 +165,20 @@
     .answer-handwrite canvas { position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
     .answer-handwrite-label { position:absolute; inset:0; display:grid; place-items:center; color:#a2afc0; pointer-events:none; }
     .manual-grade { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+    .ai-card { border:1px solid var(--line); border-radius:16px; padding:16px; background:#fbfdff; margin:14px 0; }
+    .ai-card-head { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; }
+    .ai-status { display:inline-flex; align-items:center; gap:7px; border-radius:999px; padding:6px 10px; font-size:12px; font-weight:800; }
+    .ai-status-wait { background:var(--warn-bg); color:var(--warn); }
+    .ai-status-ready { background:var(--primary-2); color:var(--primary); }
+    .ai-status-good { background:var(--success-bg); color:var(--success); }
+    .ai-status-bad { background:var(--danger-bg); color:var(--danger); }
+    .ai-result-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:12px; }
+    .ai-result-item { border:1px solid var(--line); border-radius:12px; padding:12px; background:#fff; }
+    .ai-result-label { color:var(--muted); font-size:12px; margin-bottom:5px; }
+    .ai-result-value { font-weight:800; word-break:break-word; }
+    .ai-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+    .ai-analysis { margin-top:12px; border-top:1px solid var(--line); padding-top:12px; }
+    .ai-placeholder { color:var(--muted); line-height:1.7; }
 
 
     .drawer {
@@ -213,7 +227,7 @@
   <header>
     <div class="brand">
       <div class="brand-mark">∑</div>
-      <span>文系数学トレーナー</span>
+      <span>Math Mentor AI <small style="font-weight:600;color:var(--muted)">v0.3</small></span>
     </div>
     <div class="header-right">
       <span id="saveState" class="pill">端末内に自動保存</span>
@@ -348,6 +362,60 @@
         <button id="closeDrawer" class="btn btn-ghost btn-small">閉じる</button>
       </div>
       <div id="resultNotice" class="notice"></div>
+      <div id="aiGradeArea" class="ai-card hidden">
+        <div class="ai-card-head">
+          <div>
+            <h3 style="margin:0 0 4px">AI採点</h3>
+            <div class="sub">手書き回答の読み取りと正誤判定を行う画面です。</div>
+          </div>
+          <span id="aiStatusBadge" class="ai-status ai-status-wait">API接続待ち</span>
+        </div>
+
+        <div class="ai-result-grid">
+          <div class="ai-result-item">
+            <div class="ai-result-label">AIが読み取った答え</div>
+            <div id="aiRecognizedAnswer" class="ai-result-value">未判定</div>
+          </div>
+          <div class="ai-result-item">
+            <div class="ai-result-label">判定</div>
+            <div id="aiJudgment" class="ai-result-value">未判定</div>
+          </div>
+          <div class="ai-result-item">
+            <div class="ai-result-label">信頼度</div>
+            <div id="aiConfidence" class="ai-result-value">—</div>
+          </div>
+          <div class="ai-result-item">
+            <div class="ai-result-label">確認の要否</div>
+            <div id="aiNeedsConfirmation" class="ai-result-value">—</div>
+          </div>
+        </div>
+
+        <div id="aiReason" class="notice notice-warn">
+          APIキー接続前のため、現在は画面のみ表示しています。明日、GASとOpenAI APIを接続するとここへ判定理由が表示されます。
+        </div>
+
+        <div class="ai-actions">
+          <button id="aiAcceptReading" class="btn btn-secondary" disabled>読み取りは合っている</button>
+          <button id="aiFixReading" class="btn btn-ghost" disabled>読み取りを修正する</button>
+          <button id="aiAnalyzeWork" class="btn btn-ghost" disabled>途中式を分析する</button>
+        </div>
+
+        <div id="aiWorkAnalysis" class="ai-analysis hidden">
+          <h3>途中式の分析</h3>
+          <div class="ai-result-grid">
+            <div class="ai-result-item">
+              <div class="ai-result-label">最初の誤り</div>
+              <div id="aiFirstError" class="ai-result-value">未分析</div>
+            </div>
+            <div class="ai-result-item">
+              <div class="ai-result-label">誤りの種類</div>
+              <div id="aiErrorType" class="ai-result-value">未分析</div>
+            </div>
+          </div>
+          <div id="aiFeedback" class="solution" style="margin-top:10px">途中式の分析結果がここに表示されます。</div>
+        </div>
+      </div>
+
       <div id="manualGradeArea" class="hidden">
         <p class="sub">手書き回答は、下の模範解答と見比べて判定してください。</p>
         <div class="manual-grade">
@@ -808,13 +876,16 @@
 
       const notice = document.getElementById("resultNotice");
       const manualArea = document.getElementById("manualGradeArea");
+      const aiArea = document.getElementById("aiGradeArea");
       manualArea.classList.toggle("hidden", !awaitingManualGrade);
+      aiArea.classList.toggle("hidden", !awaitingManualGrade);
       document.getElementById("manualCorrect").classList.remove("selected");
       document.getElementById("manualWrong").classList.remove("selected");
 
       if (awaitingManualGrade) {
         notice.className = "notice notice-warn";
-        notice.innerHTML = `<strong>手書き回答を確認します。</strong><br>現段階では数式の誤認識を避けるため、模範解答と見比べて本人が判定します。`;
+        notice.innerHTML = `<strong>AI採点画面を表示しました。</strong><br>本日は画面のみの実装です。API接続までは、下の自己採点で学習を続けられます。`;
+        resetAiGradeView();
       } else {
         notice.className = "notice " + (lastResultCorrect ? "notice-success" : "notice-danger");
         notice.innerHTML = lastResultCorrect
@@ -830,9 +901,28 @@
       document.getElementById("resultDrawer").classList.remove("hidden");
     }
 
+    function resetAiGradeView() {
+      const badge = document.getElementById("aiStatusBadge");
+      badge.className = "ai-status ai-status-wait";
+      badge.textContent = "API接続待ち";
+      document.getElementById("aiRecognizedAnswer").textContent = "未判定";
+      document.getElementById("aiJudgment").textContent = "未判定";
+      document.getElementById("aiConfidence").textContent = "—";
+      document.getElementById("aiNeedsConfirmation").textContent = "—";
+      document.getElementById("aiReason").className = "notice notice-warn";
+      document.getElementById("aiReason").innerHTML =
+        "APIキー接続前のため、現在は画面のみ表示しています。明日、GASとOpenAI APIを接続するとここへ判定理由が表示されます。";
+      document.getElementById("aiAcceptReading").disabled = true;
+      document.getElementById("aiFixReading").disabled = true;
+      document.getElementById("aiAnalyzeWork").disabled = true;
+      document.getElementById("aiWorkAnalysis").classList.add("hidden");
+    }
+
     function setManualGrade(correct) {
       awaitingManualGrade = false;
       lastResultCorrect = correct;
+      document.getElementById("aiStatusBadge").className = "ai-status ai-status-ready";
+      document.getElementById("aiStatusBadge").textContent = "自己採点で記録";
       document.getElementById("manualCorrect").classList.toggle("selected", correct);
       document.getElementById("manualWrong").classList.toggle("selected", !correct);
       document.getElementById("resultNotice").className = "notice " + (correct ? "notice-success" : "notice-danger");
@@ -1116,8 +1206,9 @@
       document.getElementById("answerInput").classList.toggle("hidden", pen);
       document.getElementById("penAnswerBox").classList.toggle("hidden", !pen);
       document.getElementById("answerModeNote").textContent = pen
-        ? "ペン回答は模範解答と比較して自己採点します。誤認識による不正解は起こりません。"
+        ? "ペン回答はAI採点画面へ進みます。API接続前は自己採点に切り替えられます。"
         : "大文字・小文字、全角・半角、空白、一般的な表記の違いは無視して採点します。";
+      document.getElementById("submitAnswer").textContent = pen ? "AIで採点する" : "採点する";
       if (pen) setTimeout(resizeAnswerCanvas, 30);
     }
 

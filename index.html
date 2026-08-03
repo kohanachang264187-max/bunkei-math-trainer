@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <link rel="manifest" href="./manifest.json" />
-  <title>Math Mentor AI v0.4</title>
+  <title>Math Mentor AI v0.5</title>
   <style>
     :root {
       --bg: #f4f7fb;
@@ -183,6 +183,13 @@
     .mock-title { font-weight:800; color:var(--primary); margin-bottom:8px; }
     .mock-buttons { display:flex; gap:8px; flex-wrap:wrap; }
     .mock-note { font-size:12px; color:var(--muted); margin-top:8px; line-height:1.6; }
+    .capture-panel { border:1px solid var(--line); border-radius:14px; padding:12px; background:#fff; margin-top:12px; }
+    .capture-preview-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+    .capture-preview { border:1px solid var(--line); border-radius:12px; padding:10px; background:#f8fafc; }
+    .capture-preview img { display:block; width:100%; max-height:180px; object-fit:contain; background:#fff; border-radius:8px; }
+    .capture-empty { min-height:100px; display:grid; place-items:center; color:var(--muted); font-size:12px; }
+    .capture-meta { font-size:12px; color:var(--muted); margin-top:6px; word-break:break-all; }
+    @media(max-width:560px){.capture-preview-grid{grid-template-columns:1fr}}
 
 
     .drawer {
@@ -231,7 +238,7 @@
   <header>
     <div class="brand">
       <div class="brand-mark">∑</div>
-      <span>Math Mentor AI <small style="font-weight:600;color:var(--muted)">v0.4</small></span>
+      <span>Math Mentor AI <small style="font-weight:600;color:var(--muted)">v0.5</small></span>
     </div>
     <div class="header-right">
       <span id="saveState" class="pill">端末内に自動保存</span>
@@ -396,6 +403,32 @@
 
         <div id="aiReason" class="notice notice-warn">
           APIキー接続前のため、現在は画面のみ表示しています。明日、GASとOpenAI APIを接続するとここへ判定理由が表示されます。
+        </div>
+
+        <div class="capture-panel">
+          <div class="ai-card-head">
+            <div>
+              <div class="mock-title" style="margin:0">AI送信用画像の準備</div>
+              <div class="sub">余白を自動削除し、必要な手書き部分だけを画像化します。</div>
+            </div>
+            <button id="prepareImages" class="btn btn-ghost">画像を準備する</button>
+          </div>
+          <div class="capture-preview-grid">
+            <div class="capture-preview">
+              <strong>最後の答え</strong>
+              <div id="answerImagePreview" class="capture-empty">未作成</div>
+              <div id="answerImageMeta" class="capture-meta"></div>
+            </div>
+            <div class="capture-preview">
+              <strong>途中式</strong>
+              <div id="workImagePreview" class="capture-empty">未作成</div>
+              <div id="workImageMeta" class="capture-meta"></div>
+            </div>
+          </div>
+          <div class="ai-actions">
+            <button id="downloadAnswerImage" class="btn btn-ghost" disabled>答え画像を保存</button>
+            <button id="downloadWorkImage" class="btn btn-ghost" disabled>途中式画像を保存</button>
+          </div>
         </div>
 
         <div class="mock-panel">
@@ -812,6 +845,18 @@
       lastResultCorrect = false;
       awaitingManualGrade = false;
       setAnswerMode("keyboard");
+      preparedAnswerImage = null;
+      preparedWorkImage = null;
+      if (document.getElementById("answerImagePreview")) {
+        document.getElementById("answerImagePreview").className = "capture-empty";
+        document.getElementById("answerImagePreview").textContent = "未作成";
+        document.getElementById("answerImageMeta").textContent = "";
+        document.getElementById("workImagePreview").className = "capture-empty";
+        document.getElementById("workImagePreview").textContent = "未作成";
+        document.getElementById("workImageMeta").textContent = "";
+        document.getElementById("downloadAnswerImage").disabled = true;
+        document.getElementById("downloadWorkImage").disabled = true;
+      }
 
       document.getElementById("unitTag").textContent = "数学I・" + p.unit;
       document.getElementById("difficultyTag").textContent = p.difficulty;
@@ -913,6 +958,94 @@
       document.querySelectorAll(".self-choice,.cause-choice").forEach(b => b.classList.remove("selected"));
       document.getElementById("nextQuestion").disabled = true;
       document.getElementById("resultDrawer").classList.remove("hidden");
+    }
+
+
+    let preparedAnswerImage = null;
+    let preparedWorkImage = null;
+
+    function cropCanvasToInk(sourceCanvas, padding = 24, maxWidth = 1200) {
+      const sourceCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
+      const { width, height } = sourceCanvas;
+      const pixels = sourceCtx.getImageData(0, 0, width, height).data;
+      let minX = width, minY = height, maxX = -1, maxY = -1;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const alpha = pixels[(y * width + x) * 4 + 3];
+          if (alpha > 8) {
+            minX = Math.min(minX, x); minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+          }
+        }
+      }
+      if (maxX < minX || maxY < minY) return null;
+
+      minX = Math.max(0, minX - padding);
+      minY = Math.max(0, minY - padding);
+      maxX = Math.min(width - 1, maxX + padding);
+      maxY = Math.min(height - 1, maxY + padding);
+
+      const cropWidth = maxX - minX + 1;
+      const cropHeight = maxY - minY + 1;
+      const scale = Math.min(1, maxWidth / cropWidth);
+      const out = document.createElement("canvas");
+      out.width = Math.max(1, Math.round(cropWidth * scale));
+      out.height = Math.max(1, Math.round(cropHeight * scale));
+      const outCtx = out.getContext("2d");
+      outCtx.fillStyle = "#ffffff";
+      outCtx.fillRect(0, 0, out.width, out.height);
+      outCtx.drawImage(sourceCanvas, minX, minY, cropWidth, cropHeight, 0, 0, out.width, out.height);
+
+      return {
+        dataUrl: out.toDataURL("image/png"),
+        width: out.width,
+        height: out.height
+      };
+    }
+
+    function renderPreparedImage(result, previewId, metaId) {
+      const preview = document.getElementById(previewId);
+      const meta = document.getElementById(metaId);
+      if (!result) {
+        preview.className = "capture-empty";
+        preview.textContent = "手書きがありません";
+        meta.textContent = "";
+        return;
+      }
+      preview.className = "";
+      preview.innerHTML = `<img src="${result.dataUrl}" alt="切り出した手書き画像">`;
+      const approxKb = Math.round((result.dataUrl.length * 3 / 4) / 1024);
+      meta.textContent = `${result.width}×${result.height}px・約${approxKb}KB`;
+    }
+
+    function prepareHandwritingImages() {
+      preparedAnswerImage = answerMode === "pen"
+        ? cropCanvasToInk(answerCanvas, 20, 900)
+        : null;
+      preparedWorkImage = cropCanvasToInk(canvas, 30, 1200);
+
+      renderPreparedImage(preparedAnswerImage, "answerImagePreview", "answerImageMeta");
+      renderPreparedImage(preparedWorkImage, "workImagePreview", "workImageMeta");
+      document.getElementById("downloadAnswerImage").disabled = !preparedAnswerImage;
+      document.getElementById("downloadWorkImage").disabled = !preparedWorkImage;
+
+      const reason = document.getElementById("aiReason");
+      reason.className = "notice notice-success";
+      reason.innerHTML = `<strong>画像準備が完了しました。</strong><br>
+        答え：${preparedAnswerImage ? "切り出し済み" : "手書きなし"} ／
+        途中式：${preparedWorkImage ? "切り出し済み" : "手書きなし"}。
+        API接続後は、この画像データをAIへ送信します。`;
+    }
+
+    function downloadPreparedImage(result, filename) {
+      if (!result) return;
+      const link = document.createElement("a");
+      link.href = result.dataUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     }
 
     function showMockAiResult(type) {
@@ -1313,6 +1446,16 @@
     document.getElementById("penAnswerMode").addEventListener("click", () => setAnswerMode("pen"));
     document.getElementById("manualCorrect").addEventListener("click", () => setManualGrade(true));
     document.getElementById("manualWrong").addEventListener("click", () => setManualGrade(false));
+
+    document.getElementById("prepareImages").addEventListener("click", prepareHandwritingImages);
+    document.getElementById("downloadAnswerImage").addEventListener("click", () => {
+      const p = queue[currentIndex];
+      downloadPreparedImage(preparedAnswerImage, `${p.id}_answer.png`);
+    });
+    document.getElementById("downloadWorkImage").addEventListener("click", () => {
+      const p = queue[currentIndex];
+      downloadPreparedImage(preparedWorkImage, `${p.id}_working.png`);
+    });
 
     document.getElementById("mockCorrect").addEventListener("click", () => showMockAiResult("correct"));
     document.getElementById("mockWrong").addEventListener("click", () => showMockAiResult("wrong"));

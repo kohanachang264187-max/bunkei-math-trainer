@@ -1,4 +1,4 @@
-const CACHE = "bunkei-math-v04";
+const CACHE = "bunkei-math-v05";
 const ASSETS = ["./", "./index.html", "./manifest.json"];
 self.addEventListener("install", event => {
   self.skipWaiting();

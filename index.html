@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <link rel="manifest" href="./manifest.json" />
-  <title>Math Mentor AI v0.3</title>
+  <title>Math Mentor AI v0.4</title>
   <style>
     :root {
       --bg: #f4f7fb;
@@ -179,6 +179,10 @@
     .ai-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
     .ai-analysis { margin-top:12px; border-top:1px solid var(--line); padding-top:12px; }
     .ai-placeholder { color:var(--muted); line-height:1.7; }
+    .mock-panel { border:1px dashed var(--primary); border-radius:14px; padding:12px; background:var(--primary-2); margin-top:12px; }
+    .mock-title { font-weight:800; color:var(--primary); margin-bottom:8px; }
+    .mock-buttons { display:flex; gap:8px; flex-wrap:wrap; }
+    .mock-note { font-size:12px; color:var(--muted); margin-top:8px; line-height:1.6; }
 
 
     .drawer {
@@ -227,7 +231,7 @@
   <header>
     <div class="brand">
       <div class="brand-mark">∑</div>
-      <span>Math Mentor AI <small style="font-weight:600;color:var(--muted)">v0.3</small></span>
+      <span>Math Mentor AI <small style="font-weight:600;color:var(--muted)">v0.4</small></span>
     </div>
     <div class="header-right">
       <span id="saveState" class="pill">端末内に自動保存</span>
@@ -392,6 +396,16 @@
 
         <div id="aiReason" class="notice notice-warn">
           APIキー接続前のため、現在は画面のみ表示しています。明日、GASとOpenAI APIを接続するとここへ判定理由が表示されます。
+        </div>
+
+        <div class="mock-panel">
+          <div class="mock-title">疑似AIテスト</div>
+          <div class="mock-buttons">
+            <button id="mockCorrect" class="btn btn-secondary">正解パターン</button>
+            <button id="mockWrong" class="btn btn-secondary">不正解パターン</button>
+            <button id="mockUnclear" class="btn btn-secondary">判定困難パターン</button>
+          </div>
+          <div class="mock-note">APIキーを使わず、AI採点後の画面遷移と表示内容だけ確認できます。</div>
         </div>
 
         <div class="ai-actions">
@@ -901,6 +915,85 @@
       document.getElementById("resultDrawer").classList.remove("hidden");
     }
 
+    function showMockAiResult(type) {
+      const badge = document.getElementById("aiStatusBadge");
+      const recognized = document.getElementById("aiRecognizedAnswer");
+      const judgment = document.getElementById("aiJudgment");
+      const confidence = document.getElementById("aiConfidence");
+      const needsConfirmation = document.getElementById("aiNeedsConfirmation");
+      const reason = document.getElementById("aiReason");
+      const accept = document.getElementById("aiAcceptReading");
+      const fix = document.getElementById("aiFixReading");
+      const analyze = document.getElementById("aiAnalyzeWork");
+      const work = document.getElementById("aiWorkAnalysis");
+
+      accept.disabled = false;
+      fix.disabled = false;
+      analyze.disabled = true;
+      work.classList.add("hidden");
+
+      if (type === "correct") {
+        badge.className = "ai-status ai-status-good";
+        badge.textContent = "疑似AI：正解";
+        recognized.textContent = "x + 8";
+        judgment.textContent = "正解";
+        confidence.textContent = "98%";
+        needsConfirmation.textContent = "不要";
+        reason.className = "notice notice-success";
+        reason.innerHTML = "<strong>模範解答と数学的に同値です。</strong><br>分配法則と同類項の整理が正しくできています。";
+        lastResultCorrect = true;
+        selectedSelf = null;
+        selectedCause = null;
+        document.getElementById("selfCheckArea").classList.remove("hidden");
+        document.getElementById("causeArea").classList.add("hidden");
+      }
+
+      if (type === "wrong") {
+        badge.className = "ai-status ai-status-bad";
+        badge.textContent = "疑似AI：不正解";
+        recognized.textContent = "x - 8";
+        judgment.textContent = "不正解";
+        confidence.textContent = "96%";
+        needsConfirmation.textContent = "不要";
+        reason.className = "notice notice-danger";
+        reason.innerHTML = "<strong>模範解答 x + 8 と一致しません。</strong><br>途中式を分析すると、符号ミスの可能性があります。";
+        analyze.disabled = false;
+        lastResultCorrect = false;
+        selectedSelf = null;
+        selectedCause = null;
+        document.getElementById("selfCheckArea").classList.remove("hidden");
+        document.getElementById("causeArea").classList.remove("hidden");
+      }
+
+      if (type === "unclear") {
+        badge.className = "ai-status ai-status-wait";
+        badge.textContent = "疑似AI：判定困難";
+        recognized.textContent = "x + ?";
+        judgment.textContent = "判定困難";
+        confidence.textContent = "54%";
+        needsConfirmation.textContent = "必要";
+        reason.className = "notice notice-warn";
+        reason.innerHTML = "<strong>手書きの一部を正確に読み取れませんでした。</strong><br>読み取り内容が合っているか確認してください。";
+        lastResultCorrect = false;
+        selectedSelf = null;
+        selectedCause = null;
+        document.getElementById("selfCheckArea").classList.add("hidden");
+        document.getElementById("causeArea").classList.add("hidden");
+      }
+
+      document.getElementById("nextQuestion").disabled = true;
+      updateNextEnabled();
+    }
+
+    function showMockWorkAnalysis() {
+      const work = document.getElementById("aiWorkAnalysis");
+      work.classList.remove("hidden");
+      document.getElementById("aiFirstError").textContent = "2行目";
+      document.getElementById("aiErrorType").textContent = "符号ミス";
+      document.getElementById("aiFeedback").textContent =
+        "分配法則を使う方針は正しいです。ただし、-2×(-4) は +8 になります。最初の誤りは 3x - 2x - 8 とした部分です。";
+    }
+
     function resetAiGradeView() {
       const badge = document.getElementById("aiStatusBadge");
       badge.className = "ai-status ai-status-wait";
@@ -1220,6 +1313,34 @@
     document.getElementById("penAnswerMode").addEventListener("click", () => setAnswerMode("pen"));
     document.getElementById("manualCorrect").addEventListener("click", () => setManualGrade(true));
     document.getElementById("manualWrong").addEventListener("click", () => setManualGrade(false));
+
+    document.getElementById("mockCorrect").addEventListener("click", () => showMockAiResult("correct"));
+    document.getElementById("mockWrong").addEventListener("click", () => showMockAiResult("wrong"));
+    document.getElementById("mockUnclear").addEventListener("click", () => showMockAiResult("unclear"));
+    document.getElementById("aiAnalyzeWork").addEventListener("click", showMockWorkAnalysis);
+    document.getElementById("aiAcceptReading").addEventListener("click", () => {
+      const current = document.getElementById("aiRecognizedAnswer").textContent;
+      if (current.includes("?")) {
+        const corrected = prompt("正しい読み取り結果を入力してください。", "");
+        if (!corrected) return;
+        document.getElementById("aiRecognizedAnswer").textContent = corrected;
+        document.getElementById("aiJudgment").textContent = "本人確認済み";
+        document.getElementById("aiConfidence").textContent = "本人確認";
+        document.getElementById("aiNeedsConfirmation").textContent = "完了";
+        document.getElementById("aiStatusBadge").className = "ai-status ai-status-ready";
+        document.getElementById("aiStatusBadge").textContent = "読み取り確認済み";
+        document.getElementById("aiReason").className = "notice notice-success";
+        document.getElementById("aiReason").innerHTML = "<strong>読み取り内容を本人が確認しました。</strong><br>次回は、この数式を正解データと照合します。";
+      }
+    });
+    document.getElementById("aiFixReading").addEventListener("click", () => {
+      const corrected = prompt("AIの読み取りを修正してください。", document.getElementById("aiRecognizedAnswer").textContent);
+      if (!corrected) return;
+      document.getElementById("aiRecognizedAnswer").textContent = corrected;
+      document.getElementById("aiNeedsConfirmation").textContent = "修正済み";
+      document.getElementById("aiStatusBadge").className = "ai-status ai-status-ready";
+      document.getElementById("aiStatusBadge").textContent = "読み取り修正済み";
+    });
 
     // UI events
     document.getElementById("startStudy").addEventListener("click", startStudy);

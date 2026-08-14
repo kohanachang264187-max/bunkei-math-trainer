@@ -1,8 +1,12 @@
-# Math Mentor AI v0.5
+# Math Mentor AI v0.6
 
-- 最後の答え欄と途中式欄を別々に画像化
-- 手書き部分の余白を自動削除
-- AI送信前の画像プレビュー
-- 画像サイズと概算容量を表示
-- PNG保存で内容確認可能
-- API接続後にBase64画像として送信できる構造
+- GAS Webアプリへ手書き回答画像を送信
+- 最初は最後の答えだけをAI判定
+- 不正解時は途中式も追加分析
+- 正解・不正解・判定困難を表示
+- 45秒タイムアウト
+- 通信失敗時は自己採点へ切替可能
+- OpenAI APIキーはGitHub側に保存しない
+
+GAS URL:
+https://script.google.com/macros/s/AKfycbzt-N1pE_gX_Dp7nzIe4Dq22kRsb1Og9wQfBMiFZIXhpPGejo0JbsWWDpm5DjzwR3VQVQ/exec

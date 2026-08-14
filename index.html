@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <link rel="manifest" href="./manifest.json" />
-  <title>Math Mentor AI v0.5</title>
+  <title>Math Mentor AI v0.6</title>
   <style>
     :root {
       --bg: #f4f7fb;
@@ -189,6 +189,9 @@
     .capture-preview img { display:block; width:100%; max-height:180px; object-fit:contain; background:#fff; border-radius:8px; }
     .capture-empty { min-height:100px; display:grid; place-items:center; color:var(--muted); font-size:12px; }
     .capture-meta { font-size:12px; color:var(--muted); margin-top:6px; word-break:break-all; }
+    .ai-loading { display:inline-flex; align-items:center; gap:8px; }
+    .ai-spinner { width:16px; height:16px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:aiSpin .75s linear infinite; }
+    @keyframes aiSpin { to { transform:rotate(360deg); } }
     @media(max-width:560px){.capture-preview-grid{grid-template-columns:1fr}}
 
 
@@ -238,7 +241,7 @@
   <header>
     <div class="brand">
       <div class="brand-mark">∑</div>
-      <span>Math Mentor AI <small style="font-weight:600;color:var(--muted)">v0.5</small></span>
+      <span>Math Mentor AI <small style="font-weight:600;color:var(--muted)">v0.6</small></span>
     </div>
     <div class="header-right">
       <span id="saveState" class="pill">端末内に自動保存</span>
@@ -379,7 +382,7 @@
             <h3 style="margin:0 0 4px">AI採点</h3>
             <div class="sub">手書き回答の読み取りと正誤判定を行う画面です。</div>
           </div>
-          <span id="aiStatusBadge" class="ai-status ai-status-wait">API接続待ち</span>
+          <span id="aiStatusBadge" class="ai-status ai-status-wait">AI採点準備中</span>
         </div>
 
         <div class="ai-result-grid">
@@ -402,7 +405,7 @@
         </div>
 
         <div id="aiReason" class="notice notice-warn">
-          APIキー接続前のため、現在は画面のみ表示しています。明日、GASとOpenAI APIを接続するとここへ判定理由が表示されます。
+          手書き画像を準備して「AIで採点する」を押すと、AI先生が判定します。
         </div>
 
         <div class="capture-panel">
@@ -497,6 +500,9 @@
   </div>
 
   <script>
+    const AI_API_URL = "https://script.google.com/macros/s/AKfycbzt-N1pE_gX_Dp7nzIe4Dq22kRsb1Og9wQfBMiFZIXhpPGejo0JbsWWDpm5DjzwR3VQVQ/exec";
+    const AI_REQUEST_TIMEOUT_MS = 45000;
+
     const problems = [
       {
         id: "M1-A01",
@@ -914,7 +920,7 @@
       if (hintLevel >= 3) document.getElementById("hintButton").disabled = true;
     }
 
-    function submitAnswer() {
+    async function submitAnswer() {
       const p = queue[currentIndex];
       awaitingManualGrade = answerMode === "pen";
 
@@ -925,41 +931,38 @@
           return;
         }
         lastResultCorrect = isAnswerCorrect(p, raw);
-      } else {
-        if (!answerStrokes.length) {
-          alert("最後の答えをペンで書いてください。");
-          return;
-        }
-        lastResultCorrect = false;
-      }
 
-      const notice = document.getElementById("resultNotice");
-      const manualArea = document.getElementById("manualGradeArea");
-      const aiArea = document.getElementById("aiGradeArea");
-      manualArea.classList.toggle("hidden", !awaitingManualGrade);
-      aiArea.classList.toggle("hidden", !awaitingManualGrade);
-      document.getElementById("manualCorrect").classList.remove("selected");
-      document.getElementById("manualWrong").classList.remove("selected");
-
-      if (awaitingManualGrade) {
-        notice.className = "notice notice-warn";
-        notice.innerHTML = `<strong>AI採点画面を表示しました。</strong><br>本日は画面のみの実装です。API接続までは、下の自己採点で学習を続けられます。`;
-        resetAiGradeView();
-      } else {
+        const notice = document.getElementById("resultNotice");
+        document.getElementById("manualGradeArea").classList.add("hidden");
+        document.getElementById("aiGradeArea").classList.add("hidden");
         notice.className = "notice " + (lastResultCorrect ? "notice-success" : "notice-danger");
         notice.innerHTML = lastResultCorrect
-          ? `<strong>正解です。</strong><br>大文字・小文字、全角・半角、空白、一般的な数式表記の違いを吸収して採点しました。`
-          : `<strong>今回は不正解です。</strong><br>入力表記ではなく、数学的な内容を照合しています。模範解答と比べて確認しましょう。`;
+          ? `<strong>正解です。</strong><br>表記の違いを吸収して採点しました。`
+          : `<strong>今回は不正解です。</strong><br>模範解答と比べて確認しましょう。`;
+
+        document.getElementById("solutionText").textContent = p.solution;
+        document.getElementById("causeArea").classList.toggle("hidden", lastResultCorrect);
+        document.getElementById("selfCheckArea").classList.remove("hidden");
+        document.querySelectorAll(".self-choice,.cause-choice").forEach(b => b.classList.remove("selected"));
+        document.getElementById("nextQuestion").disabled = true;
+        document.getElementById("resultDrawer").classList.remove("hidden");
+        return;
       }
 
-      document.getElementById("solutionText").textContent = p.solution;
-      document.getElementById("causeArea").classList.toggle("hidden", lastResultCorrect || awaitingManualGrade);
-      document.getElementById("selfCheckArea").classList.toggle("hidden", awaitingManualGrade);
-      document.querySelectorAll(".self-choice,.cause-choice").forEach(b => b.classList.remove("selected"));
-      document.getElementById("nextQuestion").disabled = true;
-      document.getElementById("resultDrawer").classList.remove("hidden");
-    }
+      if (!answerStrokes.length) {
+        alert("最後の答えをペンで書いてください。");
+        return;
+      }
 
+      document.getElementById("resultDrawer").classList.remove("hidden");
+      document.getElementById("solutionText").textContent = p.solution;
+      document.getElementById("manualGradeArea").classList.add("hidden");
+      document.getElementById("aiGradeArea").classList.remove("hidden");
+      document.getElementById("selfCheckArea").classList.add("hidden");
+      document.getElementById("causeArea").classList.add("hidden");
+      document.getElementById("nextQuestion").disabled = true;
+      await runRealAiGrade(false);
+    }
 
     let preparedAnswerImage = null;
     let preparedWorkImage = null;
@@ -1048,6 +1051,145 @@
       link.remove();
     }
 
+
+    function setAiLoading(isLoading) {
+      const button = document.getElementById("submitAnswer");
+      button.disabled = isLoading;
+      button.innerHTML = isLoading
+        ? '<span class="ai-loading"><span class="ai-spinner"></span>AIが確認中…</span>'
+        : (answerMode === "pen" ? "AIで採点する" : "採点する");
+    }
+
+    function normalizeAiJudgment(value) {
+      const v = String(value || "").toLowerCase();
+      if (v === "correct" || v === "正解") return "correct";
+      if (["incorrect", "wrong", "不正解"].includes(v)) return "incorrect";
+      return "unclear";
+    }
+
+    function renderRealAiResult(grading) {
+      const judgment = normalizeAiJudgment(grading.judgment);
+      const badge = document.getElementById("aiStatusBadge");
+      const reason = document.getElementById("aiReason");
+
+      document.getElementById("aiRecognizedAnswer").textContent = grading.recognized_answer || "読み取り不能";
+      document.getElementById("aiJudgment").textContent =
+        judgment === "correct" ? "正解" : judgment === "incorrect" ? "不正解" : "判定困難";
+
+      const confidence = Number(grading.confidence);
+      document.getElementById("aiConfidence").textContent =
+        Number.isFinite(confidence) ? `${Math.round(Math.max(0, Math.min(1, confidence)) * 100)}%` : "—";
+      document.getElementById("aiNeedsConfirmation").textContent =
+        (grading.needs_confirmation || judgment === "unclear") ? "必要" : "不要";
+
+      if (judgment === "correct") {
+        badge.className = "ai-status ai-status-good";
+        badge.textContent = "AI判定：正解";
+        reason.className = "notice notice-success";
+        lastResultCorrect = true;
+        document.getElementById("causeArea").classList.add("hidden");
+      } else if (judgment === "incorrect") {
+        badge.className = "ai-status ai-status-bad";
+        badge.textContent = "AI判定：不正解";
+        reason.className = "notice notice-danger";
+        lastResultCorrect = false;
+        document.getElementById("causeArea").classList.remove("hidden");
+      } else {
+        badge.className = "ai-status ai-status-wait";
+        badge.textContent = "AI判定：要確認";
+        reason.className = "notice notice-warn";
+        lastResultCorrect = false;
+        document.getElementById("causeArea").classList.add("hidden");
+      }
+
+      reason.innerHTML = `<strong>${grading.reason || "判定結果を確認してください。"}</strong>` +
+        (grading.feedback ? `<br>${grading.feedback}` : "");
+
+      document.getElementById("aiAcceptReading").disabled = false;
+      document.getElementById("aiFixReading").disabled = false;
+      document.getElementById("aiAnalyzeWork").disabled =
+        !preparedWorkImage || judgment === "correct";
+
+      if (judgment === "incorrect" && (grading.first_error_line || grading.error_type || grading.feedback)) {
+        document.getElementById("aiWorkAnalysis").classList.remove("hidden");
+        document.getElementById("aiFirstError").textContent = grading.first_error_line || "特定できませんでした";
+        document.getElementById("aiErrorType").textContent = grading.error_type || "未分類";
+        document.getElementById("aiFeedback").textContent =
+          [grading.understood ? `できていたところ：${grading.understood}` : "", grading.feedback || ""]
+            .filter(Boolean).join("\n");
+      }
+
+      selectedSelf = null;
+      selectedCause = null;
+      document.getElementById("selfCheckArea").classList.toggle("hidden", judgment === "unclear");
+      document.getElementById("nextQuestion").disabled = true;
+      updateNextEnabled();
+    }
+
+    async function callAiGradeApi(includeWorking = false) {
+      if (!preparedAnswerImage) {
+        preparedAnswerImage = answerMode === "pen" ? cropCanvasToInk(answerCanvas, 20, 900) : null;
+      }
+      if (includeWorking && !preparedWorkImage) {
+        preparedWorkImage = cropCanvasToInk(canvas, 30, 1200);
+      }
+      if (!preparedAnswerImage) throw new Error("最後の答えをペンで書いてください。");
+
+      const problem = queue[currentIndex];
+      const body = {
+        action: "grade",
+        problem_id: problem.id,
+        question: problem.question,
+        correct_answer: problem.answers[0],
+        answer_image: preparedAnswerImage.dataUrl,
+        working_image: includeWorking && preparedWorkImage ? preparedWorkImage.dataUrl : null,
+        mode: includeWorking ? "answer_and_working" : "final_answer",
+        student: { name: "かんた", nicknames: ["かんちゃん", "いまかん"] }
+      };
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+      try {
+        const response = await fetch(AI_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(body),
+          redirect: "follow",
+          signal: controller.signal
+        });
+        const text = await response.text();
+        let result;
+        try { result = JSON.parse(text); }
+        catch { throw new Error("GASからJSON以外の応答が返りました。"); }
+        if (!response.ok || !result.ok) throw new Error(result.error || `通信エラー（${response.status}）`);
+        return result.grading;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function runRealAiGrade(includeWorking = false) {
+      setAiLoading(true);
+      const badge = document.getElementById("aiStatusBadge");
+      badge.className = "ai-status ai-status-ready";
+      badge.innerHTML = '<span class="ai-loading"><span class="ai-spinner"></span>AIが確認中</span>';
+
+      try {
+        prepareHandwritingImages();
+        const grading = await callAiGradeApi(includeWorking);
+        renderRealAiResult(grading);
+      } catch (error) {
+        badge.className = "ai-status ai-status-bad";
+        badge.textContent = "AI通信エラー";
+        const reason = document.getElementById("aiReason");
+        reason.className = "notice notice-danger";
+        reason.innerHTML = `<strong>AI採点に接続できませんでした。</strong><br>${error.message || error}<br><br>自己採点または疑似AIで続けられます。`;
+        document.getElementById("manualGradeArea").classList.remove("hidden");
+      } finally {
+        setAiLoading(false);
+      }
+    }
+
     function showMockAiResult(type) {
       const badge = document.getElementById("aiStatusBadge");
       const recognized = document.getElementById("aiRecognizedAnswer");
@@ -1130,14 +1272,14 @@
     function resetAiGradeView() {
       const badge = document.getElementById("aiStatusBadge");
       badge.className = "ai-status ai-status-wait";
-      badge.textContent = "API接続待ち";
+      badge.textContent = "AI採点準備中";
       document.getElementById("aiRecognizedAnswer").textContent = "未判定";
       document.getElementById("aiJudgment").textContent = "未判定";
       document.getElementById("aiConfidence").textContent = "—";
       document.getElementById("aiNeedsConfirmation").textContent = "—";
       document.getElementById("aiReason").className = "notice notice-warn";
       document.getElementById("aiReason").innerHTML =
-        "APIキー接続前のため、現在は画面のみ表示しています。明日、GASとOpenAI APIを接続するとここへ判定理由が表示されます。";
+        "手書き画像を準備して「AIで採点する」を押すと、AI先生が判定します。";
       document.getElementById("aiAcceptReading").disabled = true;
       document.getElementById("aiFixReading").disabled = true;
       document.getElementById("aiAnalyzeWork").disabled = true;
@@ -1460,7 +1602,19 @@
     document.getElementById("mockCorrect").addEventListener("click", () => showMockAiResult("correct"));
     document.getElementById("mockWrong").addEventListener("click", () => showMockAiResult("wrong"));
     document.getElementById("mockUnclear").addEventListener("click", () => showMockAiResult("unclear"));
-    document.getElementById("aiAnalyzeWork").addEventListener("click", showMockWorkAnalysis);
+    document.getElementById("aiAnalyzeWork").addEventListener("click", async () => {
+      setAiLoading(true);
+      try {
+        const grading = await callAiGradeApi(true);
+        renderRealAiResult(grading);
+      } catch (error) {
+        const reason = document.getElementById("aiReason");
+        reason.className = "notice notice-danger";
+        reason.innerHTML = `<strong>途中式の分析に失敗しました。</strong><br>${error.message || error}`;
+      } finally {
+        setAiLoading(false);
+      }
+    });
     document.getElementById("aiAcceptReading").addEventListener("click", () => {
       const current = document.getElementById("aiRecognizedAnswer").textContent;
       if (current.includes("?")) {

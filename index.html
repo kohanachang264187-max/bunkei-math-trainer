@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <link rel="manifest" href="./manifest.json" />
-  <title>Math Mentor AI v0.6</title>
+  <title>Math Mentor AI v0.7</title>
   <style>
     :root {
       --bg: #f4f7fb;
@@ -216,6 +216,24 @@
     .cause-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .footer-note { color: var(--muted); font-size: 12px; margin-top: 12px; }
 
+    .completion-card { width:min(720px,100%); }
+    .completion-summary {
+      display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:16px 0;
+    }
+    .completion-stat {
+      border:1px solid var(--line); border-radius:14px; padding:14px; background:#f8fafc;
+      text-align:center;
+    }
+    .completion-stat strong { display:block; font-size:24px; margin-bottom:4px; }
+    .continue-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+    .continue-choice {
+      text-align:left; min-height:76px; display:flex; flex-direction:column; justify-content:center;
+    }
+    .continue-choice small { display:block; margin-top:4px; font-weight:500; opacity:.8; }
+    @media(max-width:560px){
+      .completion-summary,.continue-grid{grid-template-columns:1fr}
+    }
+
     @media (max-width: 900px) {
       main { padding: 12px; }
       .dashboard-grid, .section-grid, .study-layout { grid-template-columns: 1fr; }
@@ -241,7 +259,7 @@
   <header>
     <div class="brand">
       <div class="brand-mark">∑</div>
-      <span>Math Mentor AI <small style="font-weight:600;color:var(--muted)">v0.6</small></span>
+      <span>Math Mentor AI <small style="font-weight:600;color:var(--muted)">v0.7</small></span>
     </div>
     <div class="header-right">
       <span id="saveState" class="pill">端末内に自動保存</span>
@@ -264,7 +282,7 @@
               <button id="resetProgress" class="btn btn-ghost">進捗を初期化</button>
             </div>
             <div class="stats">
-              <div class="stat"><div id="todayCount" class="stat-value">0</div><div class="stat-label">今日の完了問題</div></div>
+              <div class="stat"><div id="todayCount" class="stat-value">0</div><div class="stat-label">今日の合計問題</div></div>
               <div class="stat"><div id="streakCount" class="stat-value">0</div><div class="stat-label">連続学習日</div></div>
               <div class="stat"><div id="masteryRate" class="stat-value">0%</div><div class="stat-label">基礎習得度</div></div>
             </div>
@@ -368,6 +386,42 @@
       </div>
     </section>
   </main>
+
+
+  <div id="completionDrawer" class="drawer hidden" role="dialog" aria-modal="true">
+    <div class="drawer-card completion-card">
+      <div class="eyebrow">TODAY'S GOAL COMPLETE</div>
+      <h2 style="font-size:28px;margin-top:8px">今日の必須8問、完了！</h2>
+      <p class="sub">ここまでで今日の最低ラインは達成です。余力があれば、目的を選んでもう少し続けられます。</p>
+
+      <div class="completion-summary">
+        <div class="completion-stat"><strong id="requiredDoneStat">8/8</strong><span>必須</span></div>
+        <div class="completion-stat"><strong id="extraDoneStat">0</strong><span>追加学習</span></div>
+        <div class="completion-stat"><strong id="totalDoneStat">8</strong><span>本日合計</span></div>
+      </div>
+
+      <div class="continue-grid">
+        <button id="continueWeak" class="btn btn-primary continue-choice">
+          弱点をもう5問
+          <small>今日のミスや苦手傾向を優先</small>
+        </button>
+        <button id="continueNew" class="btn btn-secondary continue-choice">
+          追加で5問
+          <small>未出題を優先し、足りなければランダム</small>
+        </button>
+        <button id="continueMistakes" class="btn btn-secondary continue-choice">
+          今日間違えた問題を復習
+          <small>不正解だった問題だけ解き直す</small>
+        </button>
+        <button id="continueRandom" class="btn btn-ghost continue-choice">
+          ランダムで10問
+          <small>収録問題からシャッフルして出題</small>
+        </button>
+      </div>
+
+      <button id="finishToday" class="btn btn-ghost" style="width:100%;margin-top:14px">今日は終了してホームへ</button>
+    </div>
+  </div>
 
   <div id="resultDrawer" class="drawer hidden" role="dialog" aria-modal="true">
     <div class="drawer-card">
@@ -657,6 +711,10 @@
     let answerMode = "keyboard";
     let awaitingManualGrade = false;
 
+    let studyMode = "required";
+    let requiredSessionFinished = false;
+    let sessionStartedAt = 0;
+
     function loadState() {
       try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -829,18 +887,101 @@
     }
 
     function startStudy() {
-      queue = [...problems];
+      queue = [...problems].slice(0, 8);
       currentIndex = 0;
+      studyMode = "required";
+      requiredSessionFinished = false;
+      sessionStartedAt = Date.now();
       updateStreak();
       saveState();
       loadProblem();
       showScreen("studyScreen");
     }
 
+    function shuffled(items) {
+      const a = [...items];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function repeatToLength(items, count) {
+      if (!items.length) return [];
+      const out = [];
+      while (out.length < count) out.push(...shuffled(items));
+      return out.slice(0, count);
+    }
+
+    function todaysAttempts() {
+      const today = todayKey();
+      return state.attempts.filter(a => a.date === today);
+    }
+
+    function showCompletionMenu() {
+      if (studyMode === "required") requiredSessionFinished = true;
+      const todayCount = todaysAttempts().length;
+      const required = Math.min(8, todayCount);
+      const extra = Math.max(0, todayCount - 8);
+      document.getElementById("requiredDoneStat").textContent = `${required}/8`;
+      document.getElementById("extraDoneStat").textContent = extra;
+      document.getElementById("totalDoneStat").textContent = todayCount;
+
+      const mistakes = todaysAttempts().filter(a => !a.correct);
+      document.getElementById("continueMistakes").disabled = mistakes.length === 0;
+      document.getElementById("completionDrawer").classList.remove("hidden");
+    }
+
+    function startExtraStudy(mode) {
+      const today = todaysAttempts();
+      let nextQueue = [];
+
+      if (mode === "weak") {
+        const score = {};
+        today.forEach(a => {
+          const p = problems.find(x => x.id === a.problemId);
+          if (!p) return;
+          score[p.group] ||= 0;
+          score[p.group] += a.correct ? 0 : 3;
+          score[p.group] += a.hintLevel || 0;
+          score[p.group] += a.strategyCorrect ? 0 : 1;
+        });
+        const weakGroups = Object.entries(score).sort((a,b) => b[1]-a[1]).map(([g]) => g);
+        const pool = weakGroups.length
+          ? problems.filter(p => weakGroups.includes(p.group))
+          : problems;
+        nextQueue = repeatToLength(pool, 5);
+        studyMode = "weak";
+      } else if (mode === "new") {
+        const seen = new Set(today.map(a => a.problemId));
+        const unseen = shuffled(problems.filter(p => !seen.has(p.id)));
+        nextQueue = unseen.slice(0, 5);
+        if (nextQueue.length < 5) {
+          nextQueue.push(...repeatToLength(problems, 5 - nextQueue.length));
+        }
+        studyMode = "new";
+      } else if (mode === "mistakes") {
+        const ids = [...new Set(today.filter(a => !a.correct).map(a => a.problemId))];
+        const pool = ids.map(id => problems.find(p => p.id === id)).filter(Boolean);
+        nextQueue = pool;
+        studyMode = "mistakes";
+      } else {
+        nextQueue = repeatToLength(problems, 10);
+        studyMode = "random";
+      }
+
+      if (!nextQueue.length) return;
+      queue = nextQueue;
+      currentIndex = 0;
+      document.getElementById("completionDrawer").classList.add("hidden");
+      loadProblem();
+      showScreen("studyScreen");
+    }
+
     function loadProblem() {
       if (currentIndex >= queue.length) {
-        alert("本日の学習が完了しました。ホームに戻ります。");
-        showScreen("homeScreen");
+        showCompletionMenu();
         return;
       }
       const p = queue[currentIndex];
@@ -866,7 +1007,11 @@
 
       document.getElementById("unitTag").textContent = "数学I・" + p.unit;
       document.getElementById("difficultyTag").textContent = p.difficulty;
-      document.getElementById("questionCounter").textContent = `${currentIndex+1} / ${queue.length}`;
+      const modeLabel = studyMode === "required" ? "" :
+        studyMode === "weak" ? "弱点 " :
+        studyMode === "mistakes" ? "復習 " :
+        studyMode === "random" ? "追加 " : "追加 ";
+      document.getElementById("questionCounter").textContent = `${modeLabel}${currentIndex+1} / ${queue.length}`;
       document.getElementById("questionText").textContent = p.question;
       document.getElementById("strategyChoices").innerHTML = p.strategies.map((s, i) =>
         `<button class="choice strategy-choice" data-index="${i}">${String.fromCharCode(65+i)}. ${s}</button>`
@@ -1641,7 +1786,18 @@
 
     // UI events
     document.getElementById("startStudy").addEventListener("click", startStudy);
-    document.getElementById("homeButton").addEventListener("click", () => showScreen("homeScreen"));
+    document.getElementById("continueWeak").addEventListener("click", () => startExtraStudy("weak"));
+    document.getElementById("continueNew").addEventListener("click", () => startExtraStudy("new"));
+    document.getElementById("continueMistakes").addEventListener("click", () => startExtraStudy("mistakes"));
+    document.getElementById("continueRandom").addEventListener("click", () => startExtraStudy("random"));
+    document.getElementById("finishToday").addEventListener("click", () => {
+      document.getElementById("completionDrawer").classList.add("hidden");
+      showScreen("homeScreen");
+    });
+    document.getElementById("homeButton").addEventListener("click", () => {
+      document.getElementById("completionDrawer").classList.add("hidden");
+      showScreen("homeScreen");
+    });
     document.getElementById("confirmStrategy").addEventListener("click", confirmStrategy);
     document.getElementById("hintButton").addEventListener("click", showHint);
     document.getElementById("showQuestionStrategy").addEventListener("click", () => {
